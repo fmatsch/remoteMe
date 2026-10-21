@@ -22,7 +22,7 @@ func configDir() string {
 	if err != nil {
 		d = "."
 	}
-	d = filepath.Join(d, "Fernwartung")
+	d = filepath.Join(d, "remoteMe")
 	os.MkdirAll(d, 0o700)
 	return d
 }

@@ -1,4 +1,6 @@
-# Fernwartung
+# remoteMe
+
+**Webseite:** https://fmatsch.github.io/remoteMe/ · **Entwicklung/Mac-Setup:** [DEVELOPMENT.md](DEVELOPMENT.md)
 
 Selbst gehostetes Fernwartungs-Tool für Windows, Linux und macOS. Der Zugriff läuft im Browser: Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag & Drop in beide Richtungen schieben, Zwischenablage teilen.
 
@@ -19,7 +21,7 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 ## Server
 
 ```powershell
-.\fernwartung-server-windows-amd64.exe -addr :8080 -data fernwartung-data.json
+.\remoteme-server-windows-amd64.exe -addr :8080 -data remoteme-data.json
 ```
 
 | Option | Bedeutung |
@@ -29,17 +31,17 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 | `-cert`, `-key` | TLS-Zertifikat direkt im Server; alternativ Reverse-Proxy (Caddy, nginx) davor |
 | `-open-registration` | Registrierung für alle erlauben. Ohne die Option kann **nur der erste Benutzer** sich registrieren, weitere mit `server adduser <name> <passwort>` |
 
-**Im Internet nur mit TLS betreiben** (Passwort, Sitzungs-Cookie und Bildschirminhalt laufen sonst im Klartext). Beispiel Caddy: `fernwartung.example.com { reverse_proxy localhost:8080 }` – WebSockets funktionieren automatisch; `X-Forwarded-For` wird für das Login-Limit ausgewertet.
+**Im Internet nur mit TLS betreiben** (Passwort, Sitzungs-Cookie und Bildschirminhalt laufen sonst im Klartext). Beispiel Caddy: `remoteme.example.com { reverse_proxy localhost:8080 }` – WebSockets funktionieren automatisch; `X-Forwarded-For` wird für das Login-Limit ausgewertet.
 
 ## Agent
 
-* **Windows:** `fernwartung-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
-* **Linux:** `fernwartung-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
+* **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
+* **Linux:** `remoteme-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
 * **macOS:** Agent selbst bauen (`go build ./cmd/agent`, braucht cgo/Xcode-Tools) oder aus dem GitHub-Actions-Workflow beziehen. Unter *Systemeinstellungen → Datenschutz* **Bedienungshilfen** und **Bildschirmaufnahme** erlauben.
 
-Server-Adresse vorbelegen: `.\build.ps1 -Server https://fernwartung.example.com` – dann muss am Zielrechner nur noch der Benutzername eingetragen werden.
+Server-Adresse vorbelegen: `.\build.ps1 -Server https://remoteme.example.com` – dann muss am Zielrechner nur noch der Benutzername eingetragen werden.
 
-Logs: `agent.log` im Konfigurationsordner (`%APPDATA%\Fernwartung`, `~/.config/Fernwartung`, `~/Library/Application Support/Fernwartung`).
+Logs: `agent.log` im Konfigurationsordner (`%APPDATA%\remoteMe`, `~/.config/remoteMe`, `~/Library/Application Support/remoteMe`).
 
 ## Bedienung im Browser
 

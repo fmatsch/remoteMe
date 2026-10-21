@@ -43,7 +43,7 @@ type macInput struct {
 
 func newInput() Input {
 	if C.fwTrusted() == 0 {
-		log.Println("Hinweis: Fernwartung braucht unter Systemeinstellungen > Datenschutz > Bedienungshilfen und Bildschirmaufnahme eine Freigabe.")
+		log.Println("Hinweis: remoteMe braucht unter Systemeinstellungen > Datenschutz > Bedienungshilfen und Bildschirmaufnahme eine Freigabe.")
 	}
 	return &macInput{down: map[int]bool{}}
 }

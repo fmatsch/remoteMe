@@ -12,7 +12,7 @@ func winAutostartGet() bool {
 		return false
 	}
 	defer k.Close()
-	_, _, err = k.GetStringValue("FernwartungAgent")
+	_, _, err = k.GetStringValue("remoteMeAgent")
 	return err == nil
 }
 
@@ -23,10 +23,10 @@ func winAutostartSet(on bool, exe string) error {
 	}
 	defer k.Close()
 	if !on {
-		if err := k.DeleteValue("FernwartungAgent"); err != nil && err != registry.ErrNotExist {
+		if err := k.DeleteValue("remoteMeAgent"); err != nil && err != registry.ErrNotExist {
 			return err
 		}
 		return nil
 	}
-	return k.SetStringValue("FernwartungAgent", `"`+exe+`" -background`)
+	return k.SetStringValue("remoteMeAgent", `"`+exe+`" -background`)
 }

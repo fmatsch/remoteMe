@@ -150,7 +150,7 @@ func (u *ui) autostart(w http.ResponseWriter, r *http.Request) {
 
 const setupHTML = `<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fernwartung - Einrichtung</title>
+<title>remoteMe - Einrichtung</title>
 <style>
 :root{--bg:#f4f6fa;--card:#fff;--fg:#1c2330;--mut:#667085;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--line:#e3e8ef}
 @media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--fg:#e6ebf2;--mut:#93a0b4;--line:#263041}}
@@ -170,8 +170,8 @@ button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);
 .hide{display:none}
 </style></head><body><div class="card">
 <div id="setup" class="hide">
- <h1>Fernwartung einrichten</h1><p>Dieser Computer soll von der Ferne aus erreichbar sein. Gib den Benutzer ein, der Zugriff bekommen soll.</p>
- <label>Server</label><input type="text" id="server" placeholder="https://fernwartung.example.com">
+ <h1>remoteMe einrichten</h1><p>Dieser Computer soll von der Ferne aus erreichbar sein. Gib den Benutzer ein, der Zugriff bekommen soll.</p>
+ <label>Server</label><input type="text" id="server" placeholder="https://remoteme.example.com">
  <label>Benutzer, der zugreifen darf</label><input type="text" id="user" autocomplete="off" placeholder="Benutzername">
  <label>Name dieses Computers</label><input type="text" id="name">
  <div class="chk"><input type="checkbox" id="auto" checked><label for="auto" style="margin:0;font-weight:400">Beim Anmelden automatisch starten</label></div>
@@ -179,7 +179,7 @@ button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);
  <button id="go">Verbinden</button>
 </div>
 <div id="status" class="hide">
- <h1>Fernwartung</h1>
+ <h1>remoteMe</h1>
  <div class="st"><span class="dot" id="dot"></span><b id="stText"></b></div>
  <div id="pend" class="hide"><p>Gib diesen Code in der Weboberfläche beim neuen Gerät ein, um den Zugriff freizugeben:</p><div class="code" id="code"></div></div>
  <p id="info"></p><div class="err" id="serr"></div>

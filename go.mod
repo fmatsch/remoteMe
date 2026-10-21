@@ -1,4 +1,4 @@
-module fernwartung
+module remoteme
 
 go 1.27.0
 

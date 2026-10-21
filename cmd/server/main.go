@@ -8,12 +8,12 @@ import (
 	"os"
 	"os/signal"
 
-	"fernwartung/internal/server"
+	"remoteme/internal/server"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "Adresse, auf der der Server lauscht")
-	data := flag.String("data", "fernwartung-data.json", "Datei für Benutzer und Geräte")
+	data := flag.String("data", "remoteme-data.json", "Datei für Benutzer und Geräte")
 	cert := flag.String("cert", "", "TLS-Zertifikat (optional, sonst Reverse-Proxy verwenden)")
 	key := flag.String("key", "", "TLS-Schlüssel")
 	open := flag.Bool("open-registration", false, "Registrierung für jeden erlauben (sonst nur der erste Benutzer bzw. per 'adduser')")

@@ -33,7 +33,7 @@ func openBrowser(u string) {
 
 const desktopEntry = `[Desktop Entry]
 Type=Application
-Name=Fernwartung
+Name=remoteMe
 Exec="%s" -background
 X-GNOME-Autostart-enabled=true
 `
@@ -41,7 +41,7 @@ X-GNOME-Autostart-enabled=true
 const launchAgent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>Label</key><string>at.fernwartung.agent</string>
+<key>Label</key><string>at.remoteme.agent</string>
 <key>ProgramArguments</key><array><string>%s</string><string>-background</string></array>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><true/>
@@ -50,11 +50,11 @@ const launchAgent = `<?xml version="1.0" encoding="UTF-8"?>
 
 func linuxEntry() string {
 	d, _ := os.UserConfigDir()
-	return filepath.Join(d, "autostart", "fernwartung-agent.desktop")
+	return filepath.Join(d, "autostart", "remoteme-agent.desktop")
 }
 
 func macPlist() string {
-	return filepath.Join(homeDir(), "Library", "LaunchAgents", "at.fernwartung.agent.plist")
+	return filepath.Join(homeDir(), "Library", "LaunchAgents", "at.remoteme.agent.plist")
 }
 
 func autostartEnabled() bool {

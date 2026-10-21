@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fernwartung</title>
+<title>remoteMe</title>
 <style>
 :root{--bg:#f4f6fa;--card:#fff;--fg:#1c2330;--mut:#667085;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#f59e0b;--line:#e3e8ef;--bar:#fff}
 @media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--fg:#e6ebf2;--mut:#93a0b4;--line:#263041;--bar:#171e28}}
@@ -74,7 +74,7 @@ h2{font-size:16px;margin:0}
 <!-- Anmeldung -->
 <div id="auth" class="hide">
   <div class="card auth">
-    <h1 style="margin:0 0 4px">Fernwartung</h1>
+    <h1 style="margin:0 0 4px">remoteMe</h1>
     <div id="authSub" style="color:var(--mut);margin-bottom:6px">Bitte anmelden</div>
     <label for="u">Benutzername</label><input type="text" id="u" autocomplete="username">
     <label for="p">Passwort</label><input type="password" id="p" autocomplete="current-password">
@@ -86,14 +86,14 @@ h2{font-size:16px;margin:0}
 
 <!-- Geräteliste -->
 <div id="home" class="hide">
-  <header class="top"><h1>Fernwartung</h1><span id="who" style="color:var(--mut)"></span><button id="logout">Abmelden</button></header>
+  <header class="top"><h1>remoteMe</h1><span id="who" style="color:var(--mut)"></span><button id="logout">Abmelden</button></header>
   <div class="wrap">
     <h2>Meine Computer</h2>
     <div class="grid" id="devs"></div>
     <div class="card help hide" id="empty">
       <b>Noch kein Computer verbunden.</b>
       <ol>
-        <li>Starte den Fernwartungs-Agent auf dem Computer, auf den du zugreifen willst.</li>
+        <li>Starte den remoteMe-Agent auf dem Computer, auf den du zugreifen willst.</li>
         <li>Gib dort den Server und deinen Benutzernamen <b id="myname"></b> ein.</li>
         <li>Der Agent zeigt einen Code an – gib ihn hier beim neuen Gerät ein, um den Zugriff freizugeben.</li>
       </ol>

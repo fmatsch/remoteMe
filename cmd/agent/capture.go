@@ -61,7 +61,7 @@ func changedRect(prev, cur *image.RGBA) image.Rectangle {
 	return image.Rect(minX, minY, maxX, maxY)
 }
 
-func (a *Agent) screenInfo(idx int) {
+func (a *Agent) screenInfo(idx int, extra map[string]any) {
 	n := screenshot.NumActiveDisplays()
 	var ds []map[string]int
 	for i := 0; i < n; i++ {
@@ -69,17 +69,27 @@ func (a *Agent) screenInfo(idx int) {
 		ds = append(ds, map[string]int{"w": b.Dx(), "h": b.Dy()})
 	}
 	b := screenshot.GetDisplayBounds(idx)
-	a.sendJSON(map[string]any{"t": "screen", "w": b.Dx(), "h": b.Dy(), "i": idx, "displays": ds})
+	m := map[string]any{"t": "screen", "w": b.Dx(), "h": b.Dy(), "i": idx, "displays": ds, "codec": "jpeg", "e": a.fl.epoch.Load()}
+	for k, v := range extra {
+		m[k] = v
+	}
+	a.sendJSON(m)
 }
 
-func (a *Agent) captureLoop(ctx context.Context) {
+// jpegLoop sendet geänderte Bildbereiche als JPEG, bis stop() wahr wird.
+func (a *Agent) jpegLoop(ctx context.Context, stop func() bool) {
+	a.fl.restart()
 	var prev *image.RGBA
 	var buf bytes.Buffer
 	cur := -1
 	var curB image.Rectangle
 	failed := 0
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && !stop() {
 		started := time.Now()
+		if a.fl.inflight() >= maxInflightJPEG { // Viewer/Leitung kommt nicht nach
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
 		n := screenshot.NumActiveDisplays()
 		if n == 0 {
 			time.Sleep(500 * time.Millisecond)
@@ -95,7 +105,9 @@ func (a *Agent) captureLoop(ctx context.Context) {
 			boundsMu.Lock()
 			curBound = b
 			boundsMu.Unlock()
-			a.screenInfo(idx)
+			a.fl.restart()
+			prev = nil
+			a.screenInfo(idx, nil)
 		}
 		img, err := screenshot.CaptureRect(b)
 		if err != nil {
@@ -135,6 +147,7 @@ func (a *Agent) captureLoop(ctx context.Context) {
 		if a.send(websocket.BinaryMessage, buf.Bytes()) != nil {
 			return
 		}
+		a.fl.sent.Add(1)
 		if d := minFrame - time.Since(started); d > 0 {
 			time.Sleep(d)
 		}

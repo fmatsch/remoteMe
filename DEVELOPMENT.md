@@ -1,6 +1,6 @@
 # remoteMe – Entwicklungsdokumentation
 
-Stand: v1.0 (erster lauffähiger Stand, entwickelt und getestet unter Windows 11). Dieses Dokument ist so geschrieben, dass du ohne Vorwissen auf dem Mac weiterarbeiten kannst.
+Stand: v1.1 (v1.0 unter Windows 11 entwickelt; v1.1 auf dem Mac: H.264-Videostrom, Flusssteuerung, macOS-App, Server-Deployment). Dieses Dokument ist so geschrieben, dass du ohne Vorwissen auf dem Mac weiterarbeiten kannst.
 
 ## 1. Auf dem Mac loslegen
 
@@ -14,7 +14,7 @@ cd remoteMe
 go build ./...                  # alles bauen – das ist der erste Test, ob cgo/macOS-Code kompiliert
 ```
 
-**Wichtig: Der macOS-Agent (`cmd/agent/input_darwin.go`) wurde unter Windows geschrieben und noch nie kompiliert.** Rechne beim ersten `go build` auf dem Mac mit kleinen Compilerfehlern (cgo-Typen, `C.int`-Konvertierungen). Das ist die erste Aufgabe.
+Der macOS-Agent kompiliert (cgo: ApplicationServices, ScreenCaptureKit, VideoToolbox, Cocoa). Es erscheinen harmlose Linker-Warnungen „built for newer macOS version“; `build-macos.sh` setzt `-mmacosx-version-min=13.0` einheitlich.
 
 ### Lokal alles ausprobieren (Server + Agent auf demselben Mac)
 
@@ -45,7 +45,11 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 .\build.ps1 [-Server https://deine-adresse]   # Windows: Server+Agent für Windows und Linux nach dist\
 ```
 
-Auf dem Mac: `CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.defaultServer=https://…" -o dist/remoteme-agent-macos ./cmd/agent`. Server ist reines Go und lässt sich für jede Plattform bauen. Als Vorlage liegt `docs/build-workflow.yml.example` bei (GitHub Actions: baut die Agents für Windows, Linux und macOS). Aktiv ist sie nicht, weil der Push-Token auf dem Windows-Rechner keinen `workflow`-Scope hatte: auf dem Mac nach `.github/workflows/build.yml` kopieren und pushen (oder vorher `gh auth refresh -s workflow`).
+**macOS-App:** `./build-macos.sh [-s https://server/remote] [-v 1.1.0] [-i "Developer ID Application: …"] [--dmg]` baut `dist/macos/remoteMe.app` (Universal arm64+x86_64, Menüleistensymbol, Icon aus `packaging/macos/make-icon.swift`) und optional ein DMG. Ohne `-i` wird ad hoc signiert: läuft auf dem eigenen Mac; auf fremden Macs Rechtsklick → Öffnen (für reibungslose Verteilung Developer-ID-Signatur + Notarisierung nötig). Jede neue ad-hoc-Signatur gilt für macOS als neue App → Freigaben (Bildschirmaufnahme, Bedienungshilfen) müssen nach einem Neubau ggf. erneut erteilt werden. Server ist reines Go und lässt sich für jede Plattform bauen. Als Vorlage liegt `docs/build-workflow.yml.example` bei (GitHub Actions: baut die Agents für Windows, Linux und macOS). Aktiv ist sie nicht, weil der Push-Token auf dem Windows-Rechner keinen `workflow`-Scope hatte: auf dem Mac nach `.github/workflows/build.yml` kopieren und pushen (oder vorher `gh auth refresh -s workflow`).
+
+## 1b. Server-Deployment (Testbetrieb)
+
+`deploy/deploy.sh` baut den Linux-Server, lädt ihn per SSH (Schlüssel wie im Praxiskalender-Projekt: `~/.ssh/praxiskalender_ed25519`, `root@138.201.56.28`) hoch und installiert ihn: Dienst `remoteme.service` (Benutzer `remoteme`, Port 4740 auf 127.0.0.1, Daten `/srv/remoteme/data.json`, Programm `/opt/remoteme/`). Caddy: Standard ist der Pfad **`https://www.depes.ch/remote/`** (Block `handle_path /remote/*` in `/etc/caddy/depesche.caddy`, Backup `*.vor-remoteme.<zeit>`; der Viewer ist pfadfähig, `BASE` in `index.html`). Mit `PK_SITE=remote.depes.ch ./deploy/deploy.sh` entsteht stattdessen `/etc/caddy/remoteme.caddy` für eine eigene Domain (DNS-A-Eintrag auf 138.201.56.28 bei world4you nötig). Bei ungültiger Caddy-Konfiguration wird automatisch zurückgesetzt. Agent-Server-Adresse: `https://www.depes.ch/remote` (ohne `/` am Ende).
 
 ## 2. Architektur
 
@@ -68,7 +72,11 @@ Auf dem Mac: `CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.defaultSe
 | `internal/server/limiter.go` | einfache Ratenbegrenzung |
 | `internal/server/web/index.html` | komplette Weboberfläche (Login, Geräteliste, Sitzung, Dateipanel) |
 | `cmd/agent/agent.go` | Verbindungsschleife, Nachrichtenverteilung, Zwischenablage-Schleife |
-| `cmd/agent/capture.go` | Bildschirmaufnahme, Änderungserkennung (Kacheln), JPEG-Kodierung |
+| `cmd/agent/capture.go` | JPEG-Modus: Bildschirmaufnahme, Änderungserkennung (Kacheln), JPEG-Kodierung |
+| `cmd/agent/video.go` | Codec-Wahl (H.264 ↔ JPEG), Flusssteuerung (`flow`), adaptive Bitrate, `videoLoop` |
+| `cmd/agent/video_darwin.{go,m,h}` | nativer Mac-Encoder: ScreenCaptureKit → VideoToolbox (Hardware-H.264), Annex-B-Ausgabe |
+| `cmd/agent/video_ffmpeg.go` | H.264 für Windows/Linux über einen ffmpeg-Unterprozess (nvenc/qsv/amf/libx264/videotoolbox) |
+| `cmd/agent/app_darwin.{go,m,h}` | Menüleistensymbol, Freigaben anfordern (Bildschirmaufnahme, Bedienungshilfen) |
 | `cmd/agent/files.go` | Verzeichnislisten, Upload (`.fwpart` → Rename), Download, ZIP-Streaming |
 | `cmd/agent/input*.go` | Maus/Tastatur je Plattform (`_windows`, `_linux`, `_darwin`, `_other`) |
 | `cmd/agent/ui.go` | lokale Einrichtungsseite (Host-/Token-Prüfung gegen DNS-Rebinding) |
@@ -93,7 +101,9 @@ Steuernachrichten sind JSON-Textframes mit Feld `t`, Daten sind Binärframes mit
 | Nachricht | Inhalt |
 |---|---|
 | Binär `0x01` | `[0x01][x u16][y u16][w u16][h u16][JPEG]` – Bildausschnitt, wird auf das Canvas an (x,y) gemalt |
-| `{t:"screen", w, h, i, displays:[{w,h}]}` | Größe/Index des gewählten Bildschirms |
+| Binär `0x02` | `[0x02][flags u8: Bit0=Schlüsselbild][seq u32][H.264 Access Unit, Annex B]` – ein ganzes Videobild; Schlüsselbilder enthalten SPS/PPS, keine B-Frames |
+| `{t:"screen", w, h, i, displays, codec, e, vw?, vh?}` | Größe (Punkte = Eingabekoordinaten) und Index des Bildschirms, aktiver Codec, Strom-Epoche `e`; bei H.264 Kodiergröße `vw×vh` (Canvas wird so groß, Eingaben skalieren über `w×h`) |
+| `{t:"codec", c:"jpeg", why}` | Agent konnte H.264 nicht starten und liefert JPEG |
 | `{t:"clip", s}` | Zwischenablage des Zielrechners geändert |
 | `{t:"ls-res", path, parent, entries:[{n,p,d,s,m}], err}` | Verzeichnisliste |
 
@@ -105,7 +115,9 @@ Steuernachrichten sind JSON-Textframes mit Feld `t`, Daten sind Binärframes mit
 | `{t:"md"/"mu", b, x, y}` | Maustaste (0 links, 1 mitte, 2 rechts) |
 | `{t:"wh", dx, dy}` | Rad in Rastschritten (positiv = nach unten) |
 | `{t:"k", c, k, d, ctrl, alt, meta}` | Taste: `c`=`KeyboardEvent.code`, `k`=`.key`, `d`=gedrückt |
-| `{t:"display", i}`, `{t:"opt", q}` | Bildschirm wählen, JPEG-Qualität (20–95) |
+| `{t:"display", i}`, `{t:"opt", q, codec}` | Bildschirm wählen; Qualität 20–95 (JPEG-Qualität bzw. Höchstbitrate 1–14,5 MBit/s); Codec `"h264"` (nur wenn WebCodecs verfügbar ist: https oder localhost) oder `"jpeg"` |
+| `{t:"ack", e, n}` | **Flusssteuerung:** kumulativ n verarbeitete Bilder in Epoche e. Der Agent sendet höchstens 4 (JPEG) bzw. 8 (H.264) unbestätigte Bilder; bei Stau werden H.264-Bilder verworfen, die Bitrate sinkt und es wird auf ein neues Schlüsselbild gewartet |
+| `{t:"key"}` | Viewer braucht ein Schlüsselbild (Decoderfehler) |
 | `{t:"clip", s}` | Text in die Zwischenablage des Zielrechners |
 | `{t:"ls", path}` | Verzeichnis listen (`""` = Startordner/Laufwerke) |
 
@@ -127,13 +139,16 @@ Der Viewer schickt `code` (physische Taste) und `key` (Zeichen). Der Agent tippt
 | Agent Windows: Aufnahme, Maus (DPI-korrekt), Dateien, ZIP, Reconnect | ✅ getestet |
 | Agent Windows: **Tastatur**, Zwischenablage, Autostart, Mehrfach-Monitor | ⚠️ implementiert, nicht getestet |
 | Agent Linux (X11): Aufnahme/Eingabe | ⚠️ kompiliert, nie auf einem Linux-Rechner gelaufen |
-| Agent macOS | ❌ nie kompiliert, nie gelaufen |
+| Agent macOS: Build, Aufnahme (ScreenCaptureKit), H.264 (VideoToolbox) → Browser, 30 Bilder/s | ✅ getestet (Mac mit macOS 27, Chromium) |
+| Agent macOS: Maus/Tastatur (`CGEventPost`), Retina-Koordinaten, `.app` mit Freigaben | ⚠️ implementiert, Eingabe noch nicht geprüft |
+| H.264 per ffmpeg-Pfad (Windows/Linux) | ⚠️ am Mac mit h264_videotoolbox geprüft, nicht unter Windows/Linux |
+| Server auf `https://www.depes.ch/remote/` (Ubuntu 24.04, Caddy) | ✅ läuft im Testbetrieb |
 | Viewer im Firefox/Safari | ⚠️ nur Chromium geprüft; Drag-Out auf den Desktop geht nur in Chrome/Edge |
 
 ## 6. Offene Punkte / Ideen (grob nach Nutzen)
 
-1. **macOS-Agent zum Laufen bringen** (Kompilierung, Berechtigungen, Retina: `kbinani/screenshot` liefert auf macOS Bilder in Punkten – Koordinaten von Aufnahme und `CGEventPost` müssen übereinstimmen; prüfen!).
-2. **Bildqualität/Geschwindigkeit:** Aktuell JPEG pro geändertem Rechteck (`capture.go`). Verbesserungen: mehrere kleine Rechtecke statt einer Bounding-Box, adaptive Qualität/FPS nach Bandbreite (Rückmeldung vom Viewer), Skalierung bei großen Displays, später H.264 (WebCodecs im Viewer) oder WebRTC.
+1. **macOS-Eingabe prüfen** (Maus/Tastatur über `CGEventPost`; Koordinaten sind Punkte wie in `screen.w/h`). Mauszeiger des Zielrechners einblenden/übertragen.
+2. **Video weiter ausbauen:** ✅ H.264 (macOS nativ, sonst ffmpeg), Flusssteuerung und adaptive Bitrate sind umgesetzt. Offen: Windows-Hardware-Encoder ohne ffmpeg (Media Foundation), ffmpeg mit der Windows-/Linux-App ausliefern (Lizenz beachten: libx264 ist GPL) oder go-openh264 (purego) einbinden, Bildschirmaufnahme unter Windows schneller (DXGI Desktop Duplication statt GDI), AV1/VP9, Audio. Der JPEG-Modus bleibt Fallback (http ohne WebCodecs, kein Encoder).
 3. **Zustimmung pro Sitzung** am Zielrechner (Dialog „X möchte zugreifen") als Option, sichtbarer Hinweis „Sitzung aktiv".
 4. **Windows-Dienst** für Zugriff auf Sperr-/Anmeldebildschirm und UAC (Dienst + Helferprozess in der Benutzersitzung).
 5. **Zeigerform des Zielrechners** übertragen (aktuell lokaler Zeiger im Viewer).
@@ -146,4 +161,7 @@ Der Viewer schickt `code` (physische Taste) und `key` (Zeichen). Der Agent tippt
 * **Netzlaufwerke blockieren `os.Stat`** (Windows, offline `Z:`) → Laufwerke werden parallel mit 700 ms Timeout geprüft, `ls` läuft in einer Goroutine, damit die Eingabeschleife nicht stockt.
 * **DPI:** Windows-Agent ruft `SetProcessDPIAware` beim Start, sonst stimmen Bildgröße und Mauskoordinaten bei Skalierung nicht.
 * **Browser-Tastaturen:** Reservierte Kombinationen (Strg+W, Strg+T, Alt+Tab) lassen sich nur im Vollbild mit der Keyboard-Lock-API abfangen (Chrome/Edge).
+* **`kbinani/screenshot` ist auf dem Mac langsam** (~225 ms pro Bild, also ~4 Bilder/s): nur noch Fallback/JPEG. Der Videopfad nutzt ScreenCaptureKit.
+* **Server hält Benutzer im Speicher:** `server adduser …` schreibt die Datei, ein laufender Server überschreibt sie später mit seinem Stand. Dienst vorher stoppen (`systemctl stop remoteme`), dann `adduser`, dann starten.
+* **Heredocs im Deploy-Skript:** verschachtelte `EOF` brechen Shell-Aufrufe; deshalb die Server-Seite in `deploy/remote-install.sh`.
 * Beim Start des Agents öffnet sich der Standardbrowser, solange er nicht gekoppelt ist; `-background` unterdrückt das nur bei bestehender Kopplung.

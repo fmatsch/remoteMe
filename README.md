@@ -37,7 +37,7 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 
 * **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
 * **Linux:** `remoteme-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
-* **macOS:** Agent selbst bauen (`go build ./cmd/agent`, braucht cgo/Xcode-Tools) oder über die Workflow-Vorlage `docs/build-workflow.yml.example` bauen lassen. Unter *Systemeinstellungen → Datenschutz* **Bedienungshilfen** und **Bildschirmaufnahme** erlauben.
+* **macOS (13+):** `./build-macos.sh --dmg` baut `remoteMe.app` (Menüleistensymbol, Apple Silicon + Intel). Beim ersten Start fragt macOS nach **Bildschirmaufnahme** und **Bedienungshilfen** (*Systemeinstellungen → Datenschutz & Sicherheit*); danach die App einmal neu starten. Die Einrichtung läuft über das Symbol in der Menüleiste → „Einstellungen öffnen“.
 
 Server-Adresse vorbelegen: `.\build.ps1 -Server https://remoteme.example.com` – dann muss am Zielrechner nur noch der Benutzername eingetragen werden.
 
@@ -60,7 +60,7 @@ Logs: `agent.log` im Konfigurationsordner (`%APPDATA%\remoteMe`, `~/.config/remo
 
 ## Bekannte Grenzen
 
-* Bildübertragung per JPEG nur der geänderten Bildbereiche (bis ca. 30 Bilder/s, im LAN flüssig, bei Video/Spielen begrenzt). H.264/WebRTC wäre der nächste Ausbau.
+* **Bildübertragung:** H.264 mit Flusssteuerung und adaptiver Bitrate (30 Bilder/s). Auf dem Mac nativ (ScreenCaptureKit + VideoToolbox, keine Zusatzsoftware); unter Windows/Linux über **ffmpeg** (im PATH oder neben dem Agent; Hardware-Encoder nvenc/QSV/AMF werden automatisch genutzt, sonst libx264). Der Browser dekodiert per WebCodecs (Chrome/Edge/Safari/Firefox aktuell; nur über **https** oder localhost). Ohne ffmpeg oder ohne WebCodecs greift automatisch der JPEG-Modus (nur geänderte Bildbereiche).
 * Der Agent läuft in der Benutzersitzung: Sperrbildschirm, Anmeldebildschirm und UAC-Dialoge sind nicht sichtbar bzw. bedienbar. Dafür wäre ein Windows-Dienst nötig.
 * Der Mauszeiger ist der lokale Zeiger (keine Anzeige der Zeigerform des Zielrechners).
 * Windows und Dateiübertragung sind getestet; **Linux- und macOS-Eingabe (Maus/Tastatur) sind implementiert, aber noch nicht auf echten Geräten geprüft.**

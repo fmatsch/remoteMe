@@ -44,7 +44,7 @@ const launchAgent = `<?xml version="1.0" encoding="UTF-8"?>
 <key>Label</key><string>at.remoteme.agent</string>
 <key>ProgramArguments</key><array><string>%s</string><string>-background</string></array>
 <key>RunAtLoad</key><true/>
-<key>KeepAlive</key><true/>
+<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 </dict></plist>
 `
 

@@ -54,5 +54,5 @@ func main() {
 		time.Sleep(300 * time.Millisecond)
 		openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", uiPort))
 	}
-	<-ctx.Done()
+	runApp(ctx, stop, a)
 }

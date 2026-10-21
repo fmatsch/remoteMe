@@ -130,8 +130,9 @@ h2{font-size:16px;margin:0}
 
 <script>
 const $ = id => document.getElementById(id);
+const BASE = location.pathname.replace(/\/[^/]*$/, ''); // Pfadpräfix, falls hinter einem Reverse-Proxy unter /remote/ betrieben
 const api = async (path, method = 'GET', body) => {
-  const r = await fetch(path, {method, headers: {'X-FW': '1', 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  const r = await fetch(BASE + path, {method, headers: {'X-FW': '1', 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || r.statusText); e.status = r.status; throw e; }
   return j;
@@ -207,6 +208,7 @@ $('devs').onclick = async e => {
 /* ---------- Sitzung ---------- */
 const canvas = $('screen'), cx = canvas.getContext('2d');
 let ws = null, devId = '', cw = 0, ch = 0, closing = false, queue = [], draining = false, frames = 0, bytes = 0;
+let epoch = 0, recv = 0, wantH264 = false, vdec = null, vcfg = '', vwait = true, codecName = 'jpeg';
 const pressed = new Map();
 
 function openSession(id, name) {
@@ -220,9 +222,13 @@ function overlay(text, btn) {
 }
 function connect() {
   closing = false; overlay('Verbinde ...');
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/view/' + devId);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + BASE + '/ws/view/' + devId);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { send({t: 'opt', q: +$('sQ').value}); listDir(curDir); };
+  ws.onopen = async () => {
+    epoch = 0; recv = 0; closeDecoder();
+    wantH264 = await h264Supported();
+    send({t: 'opt', q: +$('sQ').value, codec: wantH264 ? 'h264' : 'jpeg'}); listDir(curDir);
+  };
   ws.onmessage = e => typeof e.data === 'string' ? onCtrl(JSON.parse(e.data)) : onFrame(e.data);
   ws.onclose = () => { if (!closing) { overlay('Verbindung getrennt', true); releaseKeys(); } };
 }
@@ -230,7 +236,7 @@ function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function leave() {
   closing = true; if (ws) ws.close(); ws = null;
   if (document.fullscreenElement) document.exitFullscreen();
-  queue = []; enterHome();
+  queue = []; closeDecoder(); enterHome();
 }
 $('sBack').onclick = leave;
 $('ovlBtn').onclick = connect;
@@ -238,7 +244,9 @@ $('ovlBtn').onclick = connect;
 function onCtrl(m) {
   switch (m.t) {
     case 'screen':
-      cw = canvas.width = m.w; ch = canvas.height = m.h; cx.fillStyle = '#000'; cx.fillRect(0, 0, cw, ch);
+      cw = m.w; ch = m.h; canvas.width = m.vw || m.w; canvas.height = m.vh || m.h;
+      cx.fillStyle = '#000'; cx.fillRect(0, 0, canvas.width, canvas.height);
+      closeDecoder(); epoch = m.e || 0; recv = 0; codecName = m.codec || 'jpeg'; vwait = true; queue = [];
       applyFit();
       const sel = $('sDisp');
       if (m.displays.length > 1) {
@@ -247,6 +255,8 @@ function onCtrl(m) {
         sel.value = m.i;
       } else sel.classList.add('hide');
       break;
+    case 'codec': // Agent kann kein H.264 und liefert JPEG
+      wantH264 = false; codecName = m.c; toast('Videokompression am Zielrechner nicht verfügbar – JPEG-Modus'); break;
     case 'clip':
       if (navigator.clipboard) navigator.clipboard.writeText(m.s).then(() => toast('Zwischenablage vom Zielrechner übernommen'), () => {});
       break;
@@ -255,23 +265,63 @@ function onCtrl(m) {
     case 'agent-gone': closing = true; overlay('Der Zielrechner hat die Verbindung getrennt.', true); break;
   }
 }
+function ack() { recv++; send({t: 'ack', e: epoch, n: recv}); }
+function shown() { frames++; if (!$('ovl').classList.contains('hide') && ws) overlay(null); }
+
 async function onFrame(buf) {
-  const v = new DataView(buf);
-  if (v.getUint8(0) !== 1) return;
+  const v = new DataView(buf), type = v.getUint8(0);
   bytes += buf.byteLength;
+  if (type === 2) return onH264(buf, v);
+  if (type !== 1) return;
+  const ep = epoch;
   const item = {x: v.getUint16(1), y: v.getUint16(3), p: createImageBitmap(new Blob([buf.slice(9)], {type: 'image/jpeg'}))};
   queue.push(item);
   if (draining) return;
   draining = true;
   while (queue.length) {
     const it = queue.shift();
-    try { const bmp = await it.p; cx.drawImage(bmp, it.x, it.y); bmp.close(); frames++; if (!$('ovl').classList.contains('hide') && ws) overlay(null); } catch (e) {}
+    try { const bmp = await it.p; cx.drawImage(bmp, it.x, it.y); bmp.close(); shown(); } catch (e) {}
+    if (ep === epoch) ack();
   }
   draining = false;
 }
+
+/* H.264 über WebCodecs (nur in sicheren Kontexten: https oder localhost) */
+async function h264Supported() {
+  if (!window.VideoDecoder || !window.EncodedVideoChunk) return false;
+  try { return !!(await VideoDecoder.isConfigSupported({codec: 'avc1.4d0033', optimizeForLatency: true})).supported; }
+  catch (e) { return false; }
+}
+function closeDecoder() { if (vdec && vdec.state !== 'closed') try { vdec.close(); } catch (e) {} vdec = null; vcfg = ''; vwait = true; }
+function spsCodec(au) { // "avc1.PPCCLL" aus dem ersten SPS (NAL-Typ 7)
+  for (let i = 0; i + 7 < au.length; i++)
+    if (au[i] === 0 && au[i + 1] === 0 && au[i + 2] === 1 && (au[i + 3] & 31) === 7)
+      return 'avc1.' + [au[i + 4], au[i + 5], au[i + 6]].map(b => b.toString(16).padStart(2, '0')).join('');
+  return '';
+}
+function onH264(buf, v) {
+  const key = v.getUint8(1) & 1, seq = v.getUint32(2), au = new Uint8Array(buf, 6);
+  if (key) {
+    const c = spsCodec(au);
+    if (c && (c !== vcfg || !vdec || vdec.state === 'closed')) {
+      closeDecoder();
+      const ep = epoch;
+      vdec = new VideoDecoder({
+        output: f => { if (ep === epoch) { cx.drawImage(f, 0, 0, canvas.width, canvas.height); shown(); ack(); } f.close(); },
+        error: e => { closeDecoder(); send({t: 'key'}); }
+      });
+      vdec.configure({codec: c, optimizeForLatency: true});
+      vcfg = c;
+    }
+    vwait = false;
+  }
+  if (!vdec || vdec.state !== 'configured' || vwait) { ack(); if (!vdec) send({t: 'key'}); return; }
+  try { vdec.decode(new EncodedVideoChunk({type: key ? 'key' : 'delta', timestamp: seq, data: au})); }
+  catch (e) { closeDecoder(); send({t: 'key'}); ack(); }
+}
 setInterval(() => {
   if (!ws) return;
-  $('sStat').textContent = `${frames} Bilder/s · ${(bytes / 1024 / 1024 * 8).toFixed(1)} MBit/s`; frames = bytes = 0;
+  $('sStat').textContent = `${codecName === 'h264' ? 'H.264' : 'JPEG'} · ${frames} Bilder/s · ${(bytes / 1024 / 1024 * 8).toFixed(1)} MBit/s`; frames = bytes = 0;
 }, 1000);
 
 /* Ansicht */
@@ -283,7 +333,7 @@ function applyFit() {
 }
 $('sFit').onclick = () => { fit = !fit; applyFit(); };
 $('sDisp').onchange = e => send({t: 'display', i: +e.target.value});
-$('sQ').onchange = e => send({t: 'opt', q: +e.target.value});
+$('sQ').onchange = e => send({t: 'opt', q: +e.target.value, codec: wantH264 ? 'h264' : 'jpeg'});
 $('sFull').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else $('session').requestFullscreen().then(() => navigator.keyboard && navigator.keyboard.lock && navigator.keyboard.lock()).catch(() => {});
@@ -355,7 +405,7 @@ function renderDir(m) {
     </div>`).join('');
   $('flist')._entries = m.entries || [];
 }
-const dlUrl = p => `${location.origin}/api/devices/${devId}/download?path=${encodeURIComponent(p)}`;
+const dlUrl = p => `${location.origin}${BASE}/api/devices/${devId}/download?path=${encodeURIComponent(p)}`;
 function download(en) {
   const a = document.createElement('a'); a.href = dlUrl(en.p); a.download = ''; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -410,7 +460,7 @@ function upload(file) {
   row.innerHTML = `<div>⬆ ${esc(file.name)} <span class="st">0 %</span></div><div class="bar2"><i></i></div>`;
   $('xfers').prepend(row);
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', `/api/devices/${devId}/upload?dir=${encodeURIComponent(curDir)}&name=${encodeURIComponent(file.name)}`);
+  xhr.open('POST', `${BASE}/api/devices/${devId}/upload?dir=${encodeURIComponent(curDir)}&name=${encodeURIComponent(file.name)}`);
   xhr.setRequestHeader('X-FW', '1');
   xhr.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100); row.querySelector('.st').textContent = p + ' %'; row.querySelector('i').style.width = p + '%'; } };
   xhr.onload = () => {

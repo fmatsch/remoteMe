@@ -1,0 +1,20 @@
+[Unit]
+Description=remoteMe - Relay-Server fuer Fernwartung
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=remoteme
+Group=remoteme
+ExecStart=/opt/remoteme/remoteme-server -addr 127.0.0.1:__PORT__ -data /srv/remoteme/data.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/remoteme
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

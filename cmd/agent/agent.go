@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const version = "1.0.0"
+const version = "1.1.0"
 
 // Msg ist die gemeinsame JSON-Nachricht zwischen Viewer, Relay und Agent.
 type Msg struct {
@@ -44,6 +44,9 @@ type Msg struct {
 	Name string  `json:"name"`
 	Dir  string  `json:"dir"`
 	Size int64   `json:"size"`
+	E    uint32  `json:"e"`     // Strom-Epoche (Flusssteuerung)
+	N    uint32  `json:"n"`     // kumulativ bestätigte Bilder
+	Cod  string  `json:"codec"` // gewünschter Codec: "h264" oder "jpeg"
 
 	Approved bool `json:"approved"`
 }
@@ -62,6 +65,9 @@ type Agent struct {
 	capCancel context.CancelFunc
 	disp      atomic.Int32
 	quality   atomic.Int32
+	codec     atomic.Int32
+	keyReq    atomic.Bool
+	fl        flow
 	in        Input
 
 	xfer  *transfers
@@ -295,6 +301,16 @@ func (a *Agent) handle(ctx context.Context, m *Msg) {
 		if m.Q >= 20 && m.Q <= 95 {
 			a.quality.Store(int32(m.Q))
 		}
+		switch m.Cod {
+		case "h264":
+			a.codec.Store(codecH264)
+		case "jpeg":
+			a.codec.Store(codecJPEG)
+		}
+	case "ack":
+		a.fl.ack(m.E, m.N)
+	case "key":
+		a.keyReq.Store(true)
 	case "mm":
 		a.in.Move(a.abs(m.X, m.Y))
 	case "md", "mu":
@@ -323,6 +339,12 @@ func (a *Agent) handle(ctx context.Context, m *Msg) {
 	case "dl-cancel":
 		a.xfer.cancel(m.Req)
 	}
+}
+
+func (a *Agent) viewerActive() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.viewerOn
 }
 
 func (a *Agent) viewer(on bool) {

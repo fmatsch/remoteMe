@@ -1,3 +1,5 @@
 dist/
 *.exe
 remoteme-data.json
+.DS_Store
+.scratch*/

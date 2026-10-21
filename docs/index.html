@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>remoteMe – Fernwartung für Windows, Linux und macOS</title>
-<meta name="description" content="Selbst gehostete Fernwartung im Browser: Bildschirm, Maus, Tastatur, Zwischenablage und Dateien per Drag &amp; Drop.">
+<meta name="description" content="Selbst gehostete Fernwartung: flüssiges H.264-Bild, Maus, Tastatur, Zwischenablage und Dateien per Drag &amp; Drop – im Browser oder mit der nativen Mac-App.">
 <style>
 :root{--bg:#f6f8fb;--card:#fff;--fg:#1c2330;--mut:#5b6678;--acc:#2563eb;--line:#e3e8ef;--code:#0f172a}
 @media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--fg:#e6ebf2;--mut:#93a0b4;--line:#263041}}
@@ -36,9 +36,10 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 <div class="w">
 <header>
   <h1>remote<span>Me</span></h1>
-  <p class="lead">Selbst gehostete Fernwartung. Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag &amp; Drop hin- und herschieben – direkt im Browser, für Windows, Linux und macOS.</p>
+  <p class="lead">Selbst gehostete Fernwartung. Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag &amp; Drop hin- und herschieben – im Browser oder mit der nativen Mac-App, für Windows, Linux und macOS. Flüssige Übertragung per H.264.</p>
   <div class="btns">
-    <a class="b p" href="https://github.com/fmatsch/remoteMe">Auf GitHub ansehen</a>
+    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/latest">macOS-App laden</a>
+    <a class="b" href="https://github.com/fmatsch/remoteMe">Auf GitHub ansehen</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/README.md">Bedienung</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md">Entwicklerdoku</a>
   </div>
@@ -47,6 +48,8 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 <h2>Funktionen</h2>
 <div class="grid">
   <div class="c"><b>Fühlt sich an wie davor sitzen</b><p>Live-Bild des Zielrechners, Maus, Tastatur, Mausrad, Vollbild, mehrere Monitore.</p></div>
+  <div class="c"><b>Flüssig dank H.264</b><p>Hardware-Videokodierung (auf dem Mac ScreenCaptureKit + VideoToolbox, sonst ffmpeg), 30 Bilder/s, Flusssteuerung und adaptive Bitrate. Ohne WebCodecs oder ffmpeg weicht es automatisch auf JPEG aus.</p></div>
+  <div class="c"><b>Native Mac-App</b><p>Menüleistensymbol, eigenes Einrichtungsfenster und „Meine Computer“: mehrere Rechner freigeben, in einer Liste auswählen und per Doppelklick ohne Code verbinden – ohne Browser.</p></div>
   <div class="c"><b>Drag &amp; Drop für Dateien</b><p>Dateien aufs Fenster ziehen zum Hochladen; aus dem Dateipanel auf den eigenen Desktop ziehen zum Herunterladen. Ordner als ZIP.</p></div>
   <div class="c"><b>Zwischenablage</b><p>Text wird in beide Richtungen übertragen, auch Strg+V.</p></div>
   <div class="c"><b>Keine Portfreigaben</b><p>Agent und Browser verbinden sich ausgehend zu deinem Server – funktioniert hinter jeder Firewall.</p></div>
@@ -55,12 +58,15 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 </div>
 
 <h2>So funktioniert es</h2>
-<div class="diag">Browser (Viewer)  &lt;──HTTPS/WSS──&gt;  Relay-Server  &lt;──WSS──  Agent (Zielrechner)</div>
+<div class="diag">Viewer (Browser oder Mac-App)  &lt;──HTTPS/WSS──&gt;  Relay-Server  &lt;──WSS──  Agent (Zielrechner)</div>
 <ol>
   <li><b>Benutzer anlegen:</b> Server im Browser öffnen und registrieren.</li>
   <li><b>Agent installieren:</b> am Zielrechner starten, Server und den Benutzer eingeben, der zugreifen darf. Der Agent zeigt einen 6-stelligen Code.</li>
-  <li><b>Freigeben:</b> Code im Browser beim neuen Gerät eingeben – fertig. Ab jetzt reicht ein Klick auf „Verbinden".</li>
+  <li><b>Freigeben:</b> Code im Browser oder in der Mac-App („Meine Computer“) beim neuen Gerät eingeben – fertig. Ab jetzt reicht ein Doppelklick auf den Computer.</li>
 </ol>
+
+<h2>macOS-App</h2>
+<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/latest" style="color:var(--acc)">DMG</a> laden (macOS 13+, Apple Silicon und Intel), <code>remoteMe</code> in „Programme“ ziehen und starten. Die Test-Version ist nicht notarisiert: beim ersten Öffnen Rechtsklick → Öffnen. Unter <i>Datenschutz &amp; Sicherheit</i> <b>Bildschirmaufnahme</b> und <b>Bedienungshilfen</b> erlauben und die App neu starten.</p>
 
 <h2>Schnellstart</h2>
 <pre><code>git clone https://github.com/fmatsch/remoteMe.git
@@ -73,12 +79,12 @@ go run ./cmd/agent -server http://127.0.0.1:8080</code></pre>
 <h2>Stand</h2>
 <table>
   <tr><th>Bereich</th><th>Status</th></tr>
-  <tr><td>Server, Kopplung, Weboberfläche</td><td>getestet (Windows)</td></tr>
-  <tr><td>Agent Windows: Bild, Maus, Dateien</td><td>getestet</td></tr>
+  <tr><td>Server, Kopplung, Weboberfläche</td><td>getestet (Windows, Linux-Server im Testbetrieb)</td></tr>
+  <tr><td>Agent macOS: Bild (H.264), Maus, Tastatur, native App</td><td>getestet (Bild, Maus, Taste); Fernzugriff aus der App folgt im Praxistest</td></tr>
+  <tr><td>Agent Windows: Bild, Maus, Dateien</td><td>getestet (v1.0); H.264 über ffmpeg noch ungeprüft</td></tr>
   <tr><td>Agent Linux (X11)</td><td>kompiliert, noch nicht auf Gerät geprüft</td></tr>
-  <tr><td>Agent macOS</td><td>geschrieben, noch nicht kompiliert</td></tr>
 </table>
-<p style="color:var(--mut)">Bildübertragung per JPEG der geänderten Bildbereiche; H.264/WebRTC ist als Ausbau geplant. Details und offene Aufgaben: <a href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md" style="color:var(--acc)">DEVELOPMENT.md</a>.</p>
+<p style="color:var(--mut)">Der JPEG-Modus bleibt als Fallback. Details und offene Aufgaben: <a href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md" style="color:var(--acc)">DEVELOPMENT.md</a>.</p>
 
 <footer>remoteMe · MIT-Lizenz · <a href="https://github.com/fmatsch/remoteMe" style="color:var(--acc)">github.com/fmatsch/remoteMe</a></footer>
 </div>

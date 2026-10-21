@@ -156,9 +156,9 @@ type upload struct {
 }
 
 type transfers struct {
-	mu  sync.Mutex
-	ul  map[uint32]*upload
-	dl  map[uint32]context.CancelFunc
+	mu sync.Mutex
+	ul map[uint32]*upload
+	dl map[uint32]context.CancelFunc
 }
 
 func newTransfers() *transfers {

@@ -49,9 +49,9 @@ func newInput() Input {
 }
 
 var macMouse = [3][3]C.int{
-	{1, 2, 5},  // links: down, up, (drag=6)
+	{1, 2, 5},    // links: down, up, (drag=6)
 	{25, 26, 27}, // mitte
-	{3, 4, 7},  // rechts
+	{3, 4, 7},    // rechts
 }
 
 func (m *macInput) Move(x, y int) {

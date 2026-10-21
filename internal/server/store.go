@@ -48,7 +48,7 @@ type Store struct {
 
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
 
-var nameRe =regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
+var nameRe = regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
 
 const (
 	pendingTTL  = 30 * time.Minute

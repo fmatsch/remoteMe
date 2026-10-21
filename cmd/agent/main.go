@@ -50,9 +50,10 @@ func main() {
 	go a.run(ctx)
 	log.Printf("Agent %s gestartet", version)
 
-	if !*background || a.config() == nil {
+	showSetup := !*background || a.config() == nil
+	if showSetup && !nativeUI {
 		time.Sleep(300 * time.Millisecond)
 		openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", uiPort))
 	}
-	runApp(ctx, stop, a)
+	runApp(ctx, stop, a, showSetup)
 }

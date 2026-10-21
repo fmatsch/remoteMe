@@ -37,7 +37,7 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 
 * **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
 * **Linux:** `remoteme-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
-* **macOS (13+):** `./build-macos.sh --dmg` baut `remoteMe.app` (Menüleistensymbol, Apple Silicon + Intel). Beim ersten Start fragt macOS nach **Bildschirmaufnahme** und **Bedienungshilfen** (*Systemeinstellungen → Datenschutz & Sicherheit*); danach die App einmal neu starten. Die Einrichtung läuft über das Symbol in der Menüleiste → „Einstellungen öffnen“.
+* **macOS (13+):** `./build-macos.sh --dmg` baut `remoteMe.app` (Menüleistensymbol, Apple Silicon + Intel). Beim ersten Start fragt macOS nach **Bildschirmaufnahme** und **Bedienungshilfen** (*Systemeinstellungen → Datenschutz & Sicherheit*); danach die App einmal neu starten. Die Einrichtung erfolgt in einem **nativen Fenster** (kein Browser nötig); es öffnet sich beim ersten Start und danach über das Menüleistensymbol → „Einstellungen …“.
 
 Server-Adresse vorbelegen: `.\build.ps1 -Server https://remoteme.example.com` – dann muss am Zielrechner nur noch der Benutzername eingetragen werden.
 

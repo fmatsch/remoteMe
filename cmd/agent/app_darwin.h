@@ -2,7 +2,8 @@
 #define FW_APP_DARWIN_H
 
 // Menüleisten-App (läuft auf dem Hauptthread, blockiert bis zum Beenden).
-void fwRunApp(void);
+void fwRunApp(int showWindow);
+void fwShowWindow(void);
 void fwQuitApp(void);
 void fwRequestPermissions(void);
 int fwAccessibilityTrusted(void);

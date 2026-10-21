@@ -76,7 +76,7 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 | `cmd/agent/video.go` | Codec-Wahl (H.264 ↔ JPEG), Flusssteuerung (`flow`), adaptive Bitrate, `videoLoop` |
 | `cmd/agent/video_darwin.{go,m,h}` | nativer Mac-Encoder: ScreenCaptureKit → VideoToolbox (Hardware-H.264), Annex-B-Ausgabe |
 | `cmd/agent/video_ffmpeg.go` | H.264 für Windows/Linux über einen ffmpeg-Unterprozess (nvenc/qsv/amf/libx264/videotoolbox) |
-| `cmd/agent/app_darwin.{go,m,h}` | Menüleistensymbol, Freigaben anfordern (Bildschirmaufnahme, Bedienungshilfen) |
+| `cmd/agent/app_darwin.{go,m,h}` | native Mac-Oberfläche (Cocoa): Menüleistensymbol, Einrichtungs-/Statusfenster mit Freigabecode, Freigaben anfordern; kein Browser nötig. Kopplung gemeinsam mit der Browser-Seite über `Agent.pairDevice` (`ui.go`) |
 | `cmd/agent/files.go` | Verzeichnislisten, Upload (`.fwpart` → Rename), Download, ZIP-Streaming |
 | `cmd/agent/input*.go` | Maus/Tastatur je Plattform (`_windows`, `_linux`, `_darwin`, `_other`) |
 | `cmd/agent/ui.go` | lokale Einrichtungsseite (Host-/Token-Prüfung gegen DNS-Rebinding) |

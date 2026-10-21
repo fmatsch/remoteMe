@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -96,24 +97,34 @@ func (u *ui) pair(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 400, map[string]string{"error": "Ungültige Eingabe"})
 		return
 	}
-	server := strings.TrimRight(strings.TrimSpace(b.Server), "/")
+	if err := u.a.pairDevice(b.Server, b.Username, b.Name, b.Autostart); err != nil {
+		jsonOut(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+// pairDevice meldet diesen Computer beim Server an; der Freigabecode erscheint danach im Status.
+func (a *Agent) pairDevice(server, username, name string, autostart bool) error {
+	server = strings.TrimRight(strings.TrimSpace(server), "/")
+	if server == "" {
+		return errors.New("Bitte die Server-Adresse eingeben")
+	}
 	if !strings.Contains(server, "://") {
 		server = "https://" + server
 	}
-	if b.Username = strings.TrimSpace(b.Username); b.Username == "" {
-		jsonOut(w, 400, map[string]string{"error": "Bitte einen Benutzernamen eingeben"})
-		return
+	if username = strings.TrimSpace(username); username == "" {
+		return errors.New("Bitte einen Benutzernamen eingeben")
 	}
 	host, _ := os.Hostname()
-	if strings.TrimSpace(b.Name) != "" {
-		host = strings.TrimSpace(b.Name)
+	if strings.TrimSpace(name) != "" {
+		host = strings.TrimSpace(name)
 	}
-	body, _ := json.Marshal(map[string]string{"username": b.Username, "name": host, "os": runtime.GOOS})
+	body, _ := json.Marshal(map[string]string{"username": username, "name": host, "os": runtime.GOOS})
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Post(server+"/api/agent/pair", "application/json", bytes.NewReader(body))
 	if err != nil {
-		jsonOut(w, 502, map[string]string{"error": "Server nicht erreichbar: " + err.Error()})
-		return
+		return errors.New("Server nicht erreichbar: " + err.Error())
 	}
 	defer resp.Body.Close()
 	var res struct{ ID, Secret, Code, Error string }
@@ -123,14 +134,13 @@ func (u *ui) pair(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = resp.Status
 		}
-		jsonOut(w, 400, map[string]string{"error": msg})
-		return
+		return errors.New(msg)
 	}
-	if b.Autostart {
+	if autostart {
 		setAutostart(true)
 	}
-	u.a.setConfig(&Config{Server: server, Username: strings.ToLower(b.Username), ID: res.ID, Secret: res.Secret, Name: host, Code: res.Code})
-	jsonOut(w, 200, map[string]bool{"ok": true})
+	a.setConfig(&Config{Server: server, Username: strings.ToLower(username), ID: res.ID, Secret: res.Secret, Name: host, Code: res.Code})
+	return nil
 }
 
 func (u *ui) unpair(w http.ResponseWriter, r *http.Request) {

@@ -37,7 +37,7 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 
 * **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
 * **Linux:** `remoteme-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
-* **macOS:** Agent selbst bauen (`go build ./cmd/agent`, braucht cgo/Xcode-Tools) oder aus dem GitHub-Actions-Workflow beziehen. Unter *Systemeinstellungen → Datenschutz* **Bedienungshilfen** und **Bildschirmaufnahme** erlauben.
+* **macOS:** Agent selbst bauen (`go build ./cmd/agent`, braucht cgo/Xcode-Tools) oder über die Workflow-Vorlage `docs/build-workflow.yml.example` bauen lassen. Unter *Systemeinstellungen → Datenschutz* **Bedienungshilfen** und **Bildschirmaufnahme** erlauben.
 
 Server-Adresse vorbelegen: `.\build.ps1 -Server https://remoteme.example.com` – dann muss am Zielrechner nur noch der Benutzername eingetragen werden.
 

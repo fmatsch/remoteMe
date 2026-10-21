@@ -45,7 +45,7 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 .\build.ps1 [-Server https://deine-adresse]   # Windows: Server+Agent für Windows und Linux nach dist\
 ```
 
-Auf dem Mac: `CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.defaultServer=https://…" -o dist/remoteme-agent-macos ./cmd/agent`. Server ist reines Go und lässt sich für jede Plattform bauen. Das GitHub-Actions-Workflow `.github/workflows/build.yml` baut die Agents für Windows, Linux und macOS (arm64 + amd64) automatisch bei jedem Push.
+Auf dem Mac: `CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.defaultServer=https://…" -o dist/remoteme-agent-macos ./cmd/agent`. Server ist reines Go und lässt sich für jede Plattform bauen. Als Vorlage liegt `docs/build-workflow.yml.example` bei (GitHub Actions: baut die Agents für Windows, Linux und macOS). Aktiv ist sie nicht, weil der Push-Token auf dem Windows-Rechner keinen `workflow`-Scope hatte: auf dem Mac nach `.github/workflows/build.yml` kopieren und pushen (oder vorher `gh auth refresh -s workflow`).
 
 ## 2. Architektur
 

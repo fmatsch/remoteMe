@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>remoteMe</title>
 <style>
+body.app #sBack{display:none}
 :root{--bg:#f4f6fa;--card:#fff;--fg:#1c2330;--mut:#667085;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#f59e0b;--line:#e3e8ef;--bar:#fff}
 @media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--fg:#e6ebf2;--mut:#93a0b4;--line:#263041;--bar:#171e28}}
 *{box-sizing:border-box}
@@ -475,8 +476,12 @@ function upload(file) {
 /* Start */
 (async () => {
   setAuthMode(false);
-  try { me = (await api('/api/me')).user; enterHome(); }
-  catch (e) { show('auth'); }
+  const h = new URLSearchParams(location.hash.slice(1)); // Deep-Link der Mac-App: #app=1&d=<Geräte-ID>&n=<Name>
+  if (h.get('app')) document.body.classList.add('app');
+  try {
+    me = (await api('/api/me')).user; enterHome();
+    if (h.get('d')) openSession(h.get('d'), h.get('n') || '');
+  } catch (e) { show('auth'); }
 })();
 </script>
 </body>

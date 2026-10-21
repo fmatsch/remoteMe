@@ -4,6 +4,7 @@
 // Menüleisten-App (läuft auf dem Hauptthread, blockiert bis zum Beenden).
 void fwRunApp(int showWindow);
 void fwShowWindow(void);
+void fwRemoteShow(void);
 void fwQuitApp(void);
 void fwRequestPermissions(void);
 int fwAccessibilityTrusted(void);

@@ -41,7 +41,7 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 @implementation FWApp
 
 #define W 440
-#define H 430
+#define H 480
 
 - (void)buildWindow {
 	self.win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, W, H)
@@ -82,6 +82,9 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	self.goBtn.keyEquivalent = @"\r";
 	self.goBtn.bezelStyle = NSBezelStyleRounded;
 	[s addSubview:self.goBtn];
+	NSButton *r1 = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
+	r1.frame = NSMakeRect(28, 20, 230, 32);
+	[s addSubview:r1];
 	self.setupView = s;
 
 	// ---- Status ----
@@ -101,15 +104,18 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	[t addSubview:self.stCode];
 	self.stInfo = wrapLabel(@"", NSMakeRect(28, H - 300, W - 56, 44), nil);
 	[t addSubview:self.stInfo];
-	self.stErr = wrapLabel(@"", NSMakeRect(28, 100, W - 56, 40), NSColor.systemRedColor);
+	self.stErr = wrapLabel(@"", NSMakeRect(28, 130, W - 56, 40), NSColor.systemRedColor);
 	[t addSubview:self.stErr];
 	self.cAuto2 = [NSButton checkboxWithTitle:@"Beim Anmelden automatisch starten" target:self action:@selector(toggleAuto:)];
-	self.cAuto2.frame = NSMakeRect(28, 70, W - 56, 20);
+	self.cAuto2.frame = NSMakeRect(28, 100, W - 56, 20);
 	[t addSubview:self.cAuto2];
 	self.unpairBtn = [NSButton buttonWithTitle:@"Zugriff widerrufen und Kopplung lösen" target:self action:@selector(doUnpair:)];
 	self.unpairBtn.frame = NSMakeRect(28, 20, W - 56, 32);
 	self.unpairBtn.bezelStyle = NSBezelStyleRounded;
 	[t addSubview:self.unpairBtn];
+	NSButton *r2 = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
+	r2.frame = NSMakeRect(28, 56, W - 56, 32);
+	[t addSubview:r2];
 	self.statusView = t;
 
 	[root addSubview:self.setupView];
@@ -225,7 +231,8 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	self.statusLine = [m addItemWithTitle:@"remoteMe" action:nil keyEquivalent:@""];
 	self.statusLine.enabled = NO;
 	[m addItem:[NSMenuItem separatorItem]];
-	[m addItemWithTitle:@"Einstellungen …" action:@selector(openUI:) keyEquivalent:@","].target = self;
+	[m addItemWithTitle:@"Meine Computer …" action:@selector(openRemote:) keyEquivalent:@"l"].target = self;
+	[m addItemWithTitle:@"Einstellungen dieses Computers …" action:@selector(openUI:) keyEquivalent:@","].target = self;
 	[m addItemWithTitle:@"Berechtigungen prüfen …" action:@selector(perms:) keyEquivalent:@""].target = self;
 	[m addItem:[NSMenuItem separatorItem]];
 	[m addItemWithTitle:@"remoteMe beenden" action:@selector(quit:) keyEquivalent:@"q"].target = self;
@@ -234,6 +241,7 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 }
 
 - (void)openUI:(id)s { [self showWindow]; }
+- (void)openRemote:(id)s { fwRemoteShow(); }
 - (void)perms:(id)s { fwRequestPermissions(); }
 - (void)quit:(id)s { goAppQuit(); }
 // Erneutes Öffnen der App (Finder/Launchpad) zeigt das Fenster.

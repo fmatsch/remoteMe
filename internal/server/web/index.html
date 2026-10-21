@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fernwartung</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--fg:#1c2330;--mut:#667085;--acc:#2563eb;--ok:#16a34a;--bad:#dc2626;--warn:#f59e0b;--line:#e3e8ef;--bar:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#0f141b;--card:#171e28;--fg:#e6ebf2;--mut:#93a0b4;--line:#263041;--bar:#171e28}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Segoe UI",sans-serif}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button.danger{color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input[type=text],input[type=password],select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);width:100%}
+input:focus,select:focus{outline:2px solid var(--acc);border-color:transparent}
+.hide{display:none!important}
+header.top{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--bar);border-bottom:1px solid var(--line)}
+header.top h1{font-size:18px;margin:0;flex:1}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px}
+.auth{max-width:380px;margin:8vh auto}
+.auth label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+.auth button.pri{width:100%;margin-top:18px;padding:10px}
+.err{color:var(--bad);font-size:14px;margin-top:10px;min-height:1.2em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-top:14px}
+.dev .name{font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut);flex:none}
+.dot.on{background:var(--ok)}.dot.pend{background:var(--warn)}
+.dev .meta{color:var(--mut);font-size:13px;margin:4px 0 14px}
+.dev .row{display:flex;gap:8px}.dev .row .pri{flex:1}
+.dev input{margin-bottom:8px;letter-spacing:.2em;font:600 18px ui-monospace,Consolas,monospace;text-align:center}
+.help{margin-top:22px;color:var(--mut);font-size:14px}
+.help ol{padding-left:20px;margin:6px 0}
+h2{font-size:16px;margin:0}
+
+/* Sitzung */
+#session{position:fixed;inset:0;display:flex;flex-direction:column;background:#0b0f14;color:#e6ebf2}
+#session .bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#171e28;border-bottom:1px solid #263041;flex-wrap:wrap}
+#session .bar button,#session .bar select{background:#1f2937;border-color:#2f3b4e;color:#e6ebf2;padding:5px 10px;width:auto}
+#session .bar button.on{background:var(--acc);border-color:var(--acc)}
+#session .bar .sp{flex:1}
+#session .bar .stat{font-size:12px;color:#93a0b4}
+.body{flex:1;display:flex;min-height:0;position:relative}
+#stage{flex:1;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;overflow:auto;position:relative}
+#stage.fit canvas{width:100%;height:100%;object-fit:contain}
+#screen{background:#000;outline:none;touch-action:none;max-width:none}
+#files{width:320px;background:#171e28;border-left:1px solid #263041;display:flex;flex-direction:column;min-height:0}
+#files .path{padding:8px 10px;border-bottom:1px solid #263041;display:flex;gap:6px;align-items:center}
+#files .path button{background:#1f2937;border-color:#2f3b4e;color:inherit;padding:3px 9px}
+#files .path span{flex:1;font-size:12px;color:#93a0b4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+#flist{flex:1;overflow:auto;padding:4px 0}
+.f{display:flex;gap:8px;align-items:center;padding:5px 10px;cursor:default;font-size:14px;user-select:none}
+.f:hover{background:#1f2937}
+.f .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f .s{font-size:12px;color:#93a0b4}
+.f .dl{visibility:hidden;padding:0 6px;background:none;border:0;color:#93a0b4}
+.f:hover .dl{visibility:visible}
+#xfers{border-top:1px solid #263041;max-height:30%;overflow:auto;font-size:12px}
+.x{padding:6px 10px}.x .bar2{height:4px;background:#263041;border-radius:2px;margin-top:3px}.x .bar2 i{display:block;height:100%;background:var(--acc);border-radius:2px;width:0}
+.x.fail{color:#f87171}
+#drop{position:absolute;inset:8px;border:3px dashed var(--acc);border-radius:14px;background:#2563eb26;display:flex;align-items:center;justify-content:center;font-size:20px;pointer-events:none;z-index:5;text-align:center}
+#ovl{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#0b0f14d9;z-index:6;text-align:center;padding:20px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#111827;color:#fff;border:1px solid #374151;padding:9px 16px;border-radius:10px;z-index:20;font-size:14px;max-width:90vw}
+@media(max-width:700px){#files{position:absolute;right:0;top:0;bottom:0;z-index:4;width:85%}}
+</style>
+</head>
+<body>
+
+<!-- Anmeldung -->
+<div id="auth" class="hide">
+  <div class="card auth">
+    <h1 style="margin:0 0 4px">Fernwartung</h1>
+    <div id="authSub" style="color:var(--mut);margin-bottom:6px">Bitte anmelden</div>
+    <label for="u">Benutzername</label><input type="text" id="u" autocomplete="username">
+    <label for="p">Passwort</label><input type="password" id="p" autocomplete="current-password">
+    <div class="err" id="authErr"></div>
+    <button class="pri" id="authGo">Anmelden</button>
+    <p style="text-align:center;margin:14px 0 0"><a href="#" id="authSwitch" style="color:var(--acc)">Neuen Benutzer anlegen</a></p>
+  </div>
+</div>
+
+<!-- Geräteliste -->
+<div id="home" class="hide">
+  <header class="top"><h1>Fernwartung</h1><span id="who" style="color:var(--mut)"></span><button id="logout">Abmelden</button></header>
+  <div class="wrap">
+    <h2>Meine Computer</h2>
+    <div class="grid" id="devs"></div>
+    <div class="card help hide" id="empty">
+      <b>Noch kein Computer verbunden.</b>
+      <ol>
+        <li>Starte den Fernwartungs-Agent auf dem Computer, auf den du zugreifen willst.</li>
+        <li>Gib dort den Server und deinen Benutzernamen <b id="myname"></b> ein.</li>
+        <li>Der Agent zeigt einen Code an – gib ihn hier beim neuen Gerät ein, um den Zugriff freizugeben.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- Sitzung -->
+<div id="session" class="hide">
+  <div class="bar">
+    <button id="sBack">&larr; Liste</button>
+    <b id="sName"></b>
+    <select id="sDisp" class="hide" title="Bildschirm"></select>
+    <button id="sFit" title="Ansicht umschalten">Einpassen</button>
+    <select id="sQ" title="Bildqualität"><option value="40">Qualität: niedrig</option><option value="70" selected>Qualität: normal</option><option value="90">Qualität: hoch</option></select>
+    <button id="sClip" title="Zwischenablage dieses Computers an den Zielrechner senden">Zwischenablage senden</button>
+    <button id="sFull">Vollbild</button>
+    <button id="sFiles" class="on">Dateien</button>
+    <span class="sp"></span>
+    <span class="stat" id="sStat"></span>
+  </div>
+  <div class="body">
+    <div id="stage" class="fit"><canvas id="screen" tabindex="0"></canvas></div>
+    <div id="files">
+      <div class="path"><button id="fUp" title="Eine Ebene höher">&uarr;</button><button id="fHome" title="Startordner">&#8962;</button><span id="fPath"></span></div>
+      <div id="flist"></div>
+      <div id="xfers"></div>
+    </div>
+    <div id="drop" class="hide"></div>
+    <div id="ovl"><div id="ovlText">Verbinde ...</div><button id="ovlBtn" class="pri hide">Erneut verbinden</button></div>
+  </div>
+</div>
+<div id="toast" class="hide"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = async (path, method = 'GET', body) => {
+  const r = await fetch(path, {method, headers: {'X-FW': '1', 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || r.statusText); e.status = r.status; throw e; }
+  return j;
+};
+let toastT;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.remove('hide');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hide'), 3500);
+}
+function show(view) { for (const v of ['auth', 'home', 'session']) $(v).classList.toggle('hide', v !== view); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const osName = {windows: 'Windows', linux: 'Linux', darwin: 'macOS'};
+
+/* ---------- Anmeldung ---------- */
+let registering = false, me = '';
+function setAuthMode(reg) {
+  registering = reg;
+  $('authSub').textContent = reg ? 'Neuen Benutzer anlegen' : 'Bitte anmelden';
+  $('authGo').textContent = reg ? 'Registrieren' : 'Anmelden';
+  $('authSwitch').textContent = reg ? 'Ich habe schon einen Benutzer' : 'Neuen Benutzer anlegen';
+  $('p').autocomplete = reg ? 'new-password' : 'current-password';
+}
+$('authSwitch').onclick = e => { e.preventDefault(); setAuthMode(!registering); $('authErr').textContent = ''; };
+async function doAuth() {
+  $('authErr').textContent = '';
+  try {
+    const r = await api(registering ? '/api/register' : '/api/login', 'POST', {username: $('u').value, password: $('p').value});
+    me = r.user; $('p').value = ''; enterHome();
+  } catch (e) { $('authErr').textContent = e.message; }
+}
+$('authGo').onclick = doAuth;
+$('p').onkeydown = e => { if (e.key === 'Enter') doAuth(); };
+$('u').onkeydown = e => { if (e.key === 'Enter') $('p').focus(); };
+$('logout').onclick = async () => { await api('/api/logout', 'POST').catch(() => {}); stopPoll(); show('auth'); };
+
+/* ---------- Geräteliste ---------- */
+let poll;
+function stopPoll() { clearInterval(poll); poll = null; }
+function enterHome() {
+  show('home'); $('who').textContent = me; $('myname').textContent = '„' + me + '“';
+  loadDevices(); stopPoll(); poll = setInterval(loadDevices, 3000);
+}
+let lastDevJson = '';
+async function loadDevices() {
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.dev')) return; // nicht beim Tippen neu zeichnen
+  let list;
+  try { list = await api('/api/devices'); } catch (e) { if (e.status === 401) { stopPoll(); show('auth'); } return; }
+  const j = JSON.stringify(list); if (j === lastDevJson) return; lastDevJson = j;
+  $('empty').classList.toggle('hide', list.length > 0);
+  $('devs').innerHTML = list.map(d => `
+    <div class="card dev" data-id="${d.id}">
+      <div class="name"><span class="dot ${!d.approved ? 'pend' : d.online ? 'on' : ''}"></span>${esc(d.name || 'Unbenannt')}</div>
+      <div class="meta">${osName[d.os] || esc(d.os)} · ${!d.approved ? 'wartet auf Freigabe' : d.online ? (d.busy ? 'online (in Benutzung)' : 'online') : 'offline'}</div>
+      ${!d.approved ? `<input type="text" inputmode="numeric" maxlength="6" placeholder="Code vom Zielrechner" class="code">
+        <div class="row"><button class="pri act-ok">Freigeben</button><button class="danger act-del">Ablehnen</button></div>`
+      : `<div class="row"><button class="pri act-conn" ${d.online ? '' : 'disabled'}>Verbinden</button><button class="danger act-del">Entfernen</button></div>`}
+    </div>`).join('');
+};
+$('devs').onclick = async e => {
+  const card = e.target.closest('.dev'); if (!card) return;
+  const id = card.dataset.id;
+  if (e.target.classList.contains('act-conn')) openSession(id, card.querySelector('.name').textContent);
+  else if (e.target.classList.contains('act-del')) {
+    if (!confirm('Dieses Gerät wirklich entfernen? Der Zugriff wird sofort beendet.')) return;
+    await api('/api/devices/' + id, 'DELETE').catch(err => toast(err.message)); lastDevJson = ''; loadDevices();
+  } else if (e.target.classList.contains('act-ok')) {
+    try { await api(`/api/devices/${id}/approve`, 'POST', {code: card.querySelector('.code').value}); toast('Gerät freigegeben'); }
+    catch (err) { toast(err.message); }
+    lastDevJson = ''; document.activeElement.blur(); loadDevices();
+  }
+};
+
+/* ---------- Sitzung ---------- */
+const canvas = $('screen'), cx = canvas.getContext('2d');
+let ws = null, devId = '', cw = 0, ch = 0, closing = false, queue = [], draining = false, frames = 0, bytes = 0;
+const pressed = new Map();
+
+function openSession(id, name) {
+  devId = id; $('sName').textContent = name; show('session'); stopPoll();
+  curDir = ''; $('flist').innerHTML = ''; $('xfers').innerHTML = '';
+  connect();
+}
+function overlay(text, btn) {
+  $('ovl').classList.toggle('hide', text === null);
+  $('ovlText').textContent = text || ''; $('ovlBtn').classList.toggle('hide', !btn);
+}
+function connect() {
+  closing = false; overlay('Verbinde ...');
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/view/' + devId);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { send({t: 'opt', q: +$('sQ').value}); listDir(curDir); };
+  ws.onmessage = e => typeof e.data === 'string' ? onCtrl(JSON.parse(e.data)) : onFrame(e.data);
+  ws.onclose = () => { if (!closing) { overlay('Verbindung getrennt', true); releaseKeys(); } };
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function leave() {
+  closing = true; if (ws) ws.close(); ws = null;
+  if (document.fullscreenElement) document.exitFullscreen();
+  queue = []; enterHome();
+}
+$('sBack').onclick = leave;
+$('ovlBtn').onclick = connect;
+
+function onCtrl(m) {
+  switch (m.t) {
+    case 'screen':
+      cw = canvas.width = m.w; ch = canvas.height = m.h; cx.fillStyle = '#000'; cx.fillRect(0, 0, cw, ch);
+      applyFit();
+      const sel = $('sDisp');
+      if (m.displays.length > 1) {
+        sel.classList.remove('hide');
+        sel.innerHTML = m.displays.map((d, i) => `<option value="${i}">Bildschirm ${i + 1} (${d.w}×${d.h})</option>`).join('');
+        sel.value = m.i;
+      } else sel.classList.add('hide');
+      break;
+    case 'clip':
+      if (navigator.clipboard) navigator.clipboard.writeText(m.s).then(() => toast('Zwischenablage vom Zielrechner übernommen'), () => {});
+      break;
+    case 'ls-res': renderDir(m); break;
+    case 'taken-over': closing = true; overlay('Die Sitzung wurde von einem anderen Fenster übernommen.', true); break;
+    case 'agent-gone': closing = true; overlay('Der Zielrechner hat die Verbindung getrennt.', true); break;
+  }
+}
+async function onFrame(buf) {
+  const v = new DataView(buf);
+  if (v.getUint8(0) !== 1) return;
+  bytes += buf.byteLength;
+  const item = {x: v.getUint16(1), y: v.getUint16(3), p: createImageBitmap(new Blob([buf.slice(9)], {type: 'image/jpeg'}))};
+  queue.push(item);
+  if (draining) return;
+  draining = true;
+  while (queue.length) {
+    const it = queue.shift();
+    try { const bmp = await it.p; cx.drawImage(bmp, it.x, it.y); bmp.close(); frames++; if (!$('ovl').classList.contains('hide') && ws) overlay(null); } catch (e) {}
+  }
+  draining = false;
+}
+setInterval(() => {
+  if (!ws) return;
+  $('sStat').textContent = `${frames} Bilder/s · ${(bytes / 1024 / 1024 * 8).toFixed(1)} MBit/s`; frames = bytes = 0;
+}, 1000);
+
+/* Ansicht */
+let fit = true;
+function applyFit() {
+  $('stage').classList.toggle('fit', fit);
+  if (!fit) { canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px'; } else { canvas.style.width = canvas.style.height = ''; }
+  $('sFit').textContent = fit ? 'Einpassen' : '1:1';
+}
+$('sFit').onclick = () => { fit = !fit; applyFit(); };
+$('sDisp').onchange = e => send({t: 'display', i: +e.target.value});
+$('sQ').onchange = e => send({t: 'opt', q: +e.target.value});
+$('sFull').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $('session').requestFullscreen().then(() => navigator.keyboard && navigator.keyboard.lock && navigator.keyboard.lock()).catch(() => {});
+};
+$('sFiles').onclick = () => { $('files').classList.toggle('hide'); $('sFiles').classList.toggle('on'); };
+$('sClip').onclick = async () => {
+  try { send({t: 'clip', s: await navigator.clipboard.readText()}); toast('Zwischenablage gesendet'); }
+  catch (e) { toast('Zugriff auf die Zwischenablage nicht erlaubt'); }
+};
+
+/* Maus */
+function pos(e) {
+  const r = canvas.getBoundingClientRect(), s = Math.min(r.width / cw, r.height / ch);
+  const ox = (r.width - cw * s) / 2, oy = (r.height - ch * s) / 2;
+  return {x: Math.max(0, Math.min(cw - 1, Math.round((e.clientX - r.left - ox) / s))), y: Math.max(0, Math.min(ch - 1, Math.round((e.clientY - r.top - oy) / s)))};
+}
+let moveP = null;
+canvas.addEventListener('pointermove', e => {
+  moveP = pos(e);
+  if (!canvas._raf) canvas._raf = requestAnimationFrame(() => { canvas._raf = 0; if (moveP) send({t: 'mm', ...moveP}); });
+});
+canvas.addEventListener('pointerdown', e => {
+  canvas.focus(); canvas.setPointerCapture(e.pointerId); e.preventDefault();
+  send({t: 'md', b: Math.min(e.button, 2), ...pos(e)});
+});
+canvas.addEventListener('pointerup', e => { send({t: 'mu', b: Math.min(e.button, 2), ...pos(e)}); });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+let wx = 0, wy = 0;
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = e.deltaMode === 1 ? 1 : e.deltaMode === 2 ? 10 : 1 / 100;
+  wx += e.deltaX * k; wy += e.deltaY * k;
+  const dx = Math.trunc(wx * 4) / 4, dy = Math.trunc(wy * 4) / 4;
+  if (dx || dy) { send({t: 'wh', dx, dy}); wx -= dx; wy -= dy; }
+}, {passive: false});
+
+/* Tastatur */
+function inInput(e) { const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA'); }
+function keyMsg(e, down) { return {t: 'k', c: e.code, k: e.key, d: down, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey}; }
+window.addEventListener('keydown', async e => {
+  if (!ws || $('session').classList.contains('hide') || inInput(e)) return;
+  e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && navigator.clipboard) {
+    try { send({t: 'clip', s: await navigator.clipboard.readText()}); } catch (err) {}
+  }
+  pressed.set(e.code, e);
+  send(keyMsg(e, true));
+}, true);
+window.addEventListener('keyup', e => {
+  if (!ws || $('session').classList.contains('hide') || inInput(e)) return;
+  e.preventDefault(); pressed.delete(e.code); send(keyMsg(e, false));
+}, true);
+function releaseKeys() { for (const e of pressed.values()) send(keyMsg(e, false)); pressed.clear(); }
+window.addEventListener('blur', releaseKeys);
+
+/* Dateien */
+let curDir = '';
+function fmtSize(n) { if (n < 1024) return n + ' B'; const u = ['KB', 'MB', 'GB', 'TB']; let i = -1; do { n /= 1024; i++; } while (n >= 1024 && i < 3); return n.toFixed(n < 10 ? 1 : 0) + ' ' + u[i]; }
+function listDir(p) { send({t: 'ls', path: p}); }
+let parentDir = '';
+function renderDir(m) {
+  if (m.err) { toast(m.err); return; }
+  curDir = m.path; parentDir = m.parent;
+  $('fPath').textContent = m.path || 'Startordner';
+  $('flist').innerHTML = (m.entries || []).map((en, i) => `
+    <div class="f" draggable="true" data-i="${i}">
+      <span>${en.d ? '📁' : '📄'}</span><span class="n" title="${esc(en.n)}">${esc(en.n)}</span>
+      <span class="s">${en.d ? '' : fmtSize(en.s)}</span><button class="dl" title="${en.d ? 'Als ZIP herunterladen' : 'Herunterladen'}">⬇</button>
+    </div>`).join('');
+  $('flist')._entries = m.entries || [];
+}
+const dlUrl = p => `${location.origin}/api/devices/${devId}/download?path=${encodeURIComponent(p)}`;
+function download(en) {
+  const a = document.createElement('a'); a.href = dlUrl(en.p); a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+}
+$('flist').addEventListener('dblclick', e => {
+  const row = e.target.closest('.f'); if (!row) return;
+  const en = $('flist')._entries[row.dataset.i];
+  if (en.d) listDir(en.p); else download(en);
+});
+$('flist').addEventListener('click', e => {
+  const row = e.target.closest('.f'); if (!row) return;
+  const en = $('flist')._entries[row.dataset.i];
+  if (e.target.classList.contains('dl')) download(en); else if (en.d) listDir(en.p);
+});
+$('flist').addEventListener('dragstart', e => {
+  const row = e.target.closest('.f'); if (!row) return;
+  const en = $('flist')._entries[row.dataset.i];
+  const name = (en.n + (en.d ? '.zip' : '')).replace(/:/g, '_');
+  e.dataTransfer.effectAllowed = 'copy';
+  e.dataTransfer.setData('DownloadURL', `application/octet-stream:${name}:${dlUrl(en.p)}`); // Ziehen auf den lokalen Desktop (Chrome/Edge)
+  e.dataTransfer.setData('text/plain', en.p);
+  dragFromPanel = true;
+});
+let dragFromPanel = false;
+window.addEventListener('dragend', () => { dragFromPanel = false; });
+$('fUp').onclick = () => listDir(parentDir);
+$('fHome').onclick = () => listDir('');
+
+/* Upload per Drag & Drop */
+let dragDepth = 0;
+const hasFiles = e => !dragFromPanel && e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+const sess = $('session');
+sess.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; showDrop(true); });
+sess.addEventListener('dragover', e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+sess.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; showDrop(false); } });
+sess.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; showDrop(false);
+  const items = [...(e.dataTransfer.items || [])];
+  const files = [...e.dataTransfer.files];
+  files.forEach((f, i) => {
+    const ent = items[i] && items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+    if (ent && ent.isDirectory) toast(`„${f.name}“ ist ein Ordner – bitte als ZIP packen`);
+    else upload(f);
+  });
+});
+function showDrop(on) {
+  const d = $('drop'); d.classList.toggle('hide', !on);
+  if (on) d.textContent = 'Dateien hier ablegen → ' + (curDir || 'Desktop des Zielrechners');
+}
+function upload(file) {
+  const row = document.createElement('div'); row.className = 'x';
+  row.innerHTML = `<div>⬆ ${esc(file.name)} <span class="st">0 %</span></div><div class="bar2"><i></i></div>`;
+  $('xfers').prepend(row);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `/api/devices/${devId}/upload?dir=${encodeURIComponent(curDir)}&name=${encodeURIComponent(file.name)}`);
+  xhr.setRequestHeader('X-FW', '1');
+  xhr.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(e.loaded / e.total * 100); row.querySelector('.st').textContent = p + ' %'; row.querySelector('i').style.width = p + '%'; } };
+  xhr.onload = () => {
+    let r = {}; try { r = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status === 200) { row.querySelector('.st').textContent = 'fertig'; row.querySelector('i').style.width = '100%'; toast('Übertragen: ' + (r.path || file.name)); listDir(curDir); }
+    else { row.classList.add('fail'); row.querySelector('.st').textContent = r.error || 'Fehler'; }
+  };
+  xhr.onerror = () => { row.classList.add('fail'); row.querySelector('.st').textContent = 'Verbindungsfehler'; };
+  xhr.send(file);
+}
+
+/* Start */
+(async () => {
+  setAuthMode(false);
+  try { me = (await api('/api/me')).user; enterHome(); }
+  catch (e) { show('auth'); }
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # remoteMe
 
-**Webseite:** https://fmatsch.github.io/remoteMe/ · **Entwicklung/Mac-Setup:** [DEVELOPMENT.md](DEVELOPMENT.md)
+**Webseite:** https://fmatsch.ist/remoteMe/ · **Entwicklung/Mac-Setup:** [DEVELOPMENT.md](DEVELOPMENT.md)
 
 Selbst gehostetes Fernwartungs-Tool für Windows, Linux und macOS. Der Zugriff läuft im Browser: Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag & Drop in beide Richtungen schieben, Zwischenablage teilen.
 

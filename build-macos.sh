@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Baut remoteMe.app (Universal: Apple Silicon + Intel) und optional ein DMG.
 #   ./build-macos.sh [-s https://server] [-v 1.1.0] [-i "Developer ID Application: …"] [--dmg]
-# Ohne -i wird ad hoc signiert (läuft auf diesem Mac; auf anderen Macs: Rechtsklick > Öffnen).
+# Ohne -i wird mit dem Zertifikat "remoteMe Signatur" aus dem Schlüsselbund signiert, falls vorhanden
+# (macOS-Freigaben bleiben dann über Updates erhalten), sonst ad hoc. Beides ist nicht notarisiert.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SERVER=""; VERSION="$(grep -m1 'const version' cmd/agent/agent.go | cut -d'"' -f2)"; IDENT="-"; DMG=0
+SERVER=""; VERSION="$(grep -m1 'const version' cmd/agent/agent.go | cut -d'"' -f2)"; IDENT=""; DMG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -s) SERVER="$2"; shift 2 ;;
@@ -15,6 +16,10 @@ while [ $# -gt 0 ]; do
     *) echo "Unbekannte Option: $1"; exit 1 ;;
   esac
 done
+
+if [ -z "$IDENT" ]; then
+  if security find-identity -p codesigning | grep -q '"remoteMe Signatur"'; then IDENT="remoteMe Signatur"; else IDENT="-"; fi
+fi
 
 OUT=dist/macos
 APP="$OUT/remoteMe.app"

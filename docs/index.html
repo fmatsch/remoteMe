@@ -38,8 +38,8 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
   <h1>remote<span>Me</span></h1>
   <p class="lead">Selbst gehostete Fernwartung. Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag &amp; Drop hin- und herschieben – im Browser oder mit der nativen Mac-App, für Windows, Linux und macOS. Flüssige Übertragung per H.264.</p>
   <div class="btns">
-    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/download/v1.3.0/remoteMe-1.3.0.dmg">Download für macOS</a>
-    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/download/v1.3.0/remoteMe-1.3.0-windows-x64.zip">Download für Windows</a>
+    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/download/v1.4.0/remoteMe-1.4.0.dmg">Download für macOS</a>
+    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/download/v1.4.0/remoteMe-1.4.0-windows-x64.zip">Download für Windows</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe">Auf GitHub ansehen</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/README.md">Bedienung</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md">Entwicklerdoku</a>
@@ -54,6 +54,7 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
   <div class="c"><b>Drag &amp; Drop für Dateien</b><p>Dateien aufs Fenster ziehen zum Hochladen; aus dem Dateipanel auf den eigenen Desktop ziehen zum Herunterladen. Ordner als ZIP.</p></div>
   <div class="c"><b>Zwischenablage</b><p>Text wird in beide Richtungen übertragen, auch Strg+V.</p></div>
   <div class="c"><b>Keine Portfreigaben</b><p>Agent und Browser verbinden sich ausgehend zu deinem Server – funktioniert hinter jeder Firewall.</p></div>
+  <div class="c"><b>Auch gesperrte Windows-Rechner</b><p>Als Dienst installiert ist der Rechner auch gesperrt oder abgemeldet erreichbar, mit Strg+Alt+Entf aus der Sitzung.</p></div>
   <div class="c"><b>Zweiter Faktor</b><p>Anmeldung mit Passwort und Einmalcode aus der Authenticator-App; Sitzungen enden nach 12 Stunden.</p></div>
   <div class="c"><b>Sichere Kopplung</b><p>Ein Rechner wird erst erreichbar, wenn ihn ein angemeldeter Benutzer mit dem dort angezeigten Code und dem dort festgelegten Zugriffspasswort übernimmt.</p></div>
   <div class="c"><b>Windows · Linux · macOS</b><p>Ein Go-Projekt, ein Agent je Betriebssystem, Server als einzelne Datei.</p></div>
@@ -68,11 +69,11 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 </ol>
 
 <h2>macOS-App</h2>
-<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/tag/v1.3.0" style="color:var(--acc)">DMG</a> laden (macOS 13+, Apple Silicon und Intel), <code>remoteMe</code> in „Programme“ ziehen und starten. Die Test-Version ist nicht notarisiert: macOS blockiert den ersten Start. Danach unter <i>Systemeinstellungen → Datenschutz &amp; Sicherheit</i> auf <b>Dennoch öffnen</b> klicken (bis macOS 14: Rechtsklick → Öffnen). Beim ersten Start wählst du „Nur als Ziel“ oder „Vollversion“. Als Ziel braucht die App unter <i>Datenschutz &amp; Sicherheit</i> <b>Bildschirmaufnahme</b> und <b>Bedienungshilfen</b>; danach neu starten.</p>
+<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/tag/v1.4.0" style="color:var(--acc)">DMG</a> laden (macOS 13+, Apple Silicon und Intel), <code>remoteMe</code> in „Programme“ ziehen und starten. Die Test-Version ist nicht notarisiert: macOS blockiert den ersten Start. Danach unter <i>Systemeinstellungen → Datenschutz &amp; Sicherheit</i> auf <b>Dennoch öffnen</b> klicken (bis macOS 14: Rechtsklick → Öffnen). Beim ersten Start wählst du „Nur als Ziel“ oder „Vollversion“. Als Ziel braucht die App unter <i>Datenschutz &amp; Sicherheit</i> <b>Bildschirmaufnahme</b> und <b>Bedienungshilfen</b>; danach neu starten.</p>
 
 <h2>Windows</h2>
-<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/download/v1.3.0/remoteMe-1.3.0-windows-x64.zip" style="color:var(--acc)">ZIP-Datei</a> (Windows 10/11, 64 Bit) entpacken und <code>remoteMe.exe</code> starten. Die Datei ist nicht signiert: bei der SmartScreen-Meldung <b>Weitere Informationen → Trotzdem ausführen</b>. Die Einrichtung öffnet sich im Browser (Server und Zugriffspasswort). Unter Windows dient das Programm als Ziel; andere Computer steuerst du im Browser über die Adresse deines Servers. Für H.264-Video <code>ffmpeg.exe</code> neben die Programmdatei legen, sonst läuft der JPEG-Modus.</p>
-<p style="color:var(--mut)">Hinweis: Die Windows-Version 1.3.0 ist noch nicht auf einem Windows-Rechner getestet.</p>
+<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/download/v1.4.0/remoteMe-1.4.0-windows-x64.zip" style="color:var(--acc)">ZIP-Datei</a> (Windows 10/11, 64 Bit) entpacken und <code>remoteMe.exe</code> starten. Die Datei ist nicht signiert: bei der SmartScreen-Meldung <b>Weitere Informationen → Trotzdem ausführen</b>. Die Einrichtung öffnet sich im Browser (Server und Zugriffspasswort). Unter Windows dient das Programm als Ziel; andere Computer steuerst du im Browser über die Adresse deines Servers. <code>ffmpeg</code> für H.264 liegt bei (GPL), auch für Rechner ohne Grafikkarte – alle Dateien im selben Ordner lassen. Für den Zugriff bei <b>gesperrtem oder abgemeldetem Rechner</b> nach dem Verbinden auf „Als Dienst installieren“ klicken (Administratorrechte; der Dienst läuft mit Systemrechten).</p>
+<p style="color:var(--mut)">Hinweis: Dienst, Sperr- und Anmeldebildschirm wurden automatisch auf einem Windows-Rechner bei GitHub getestet, noch nicht im Praxisbetrieb.</p>
 
 <h2>Schnellstart</h2>
 <pre><code>git clone https://github.com/fmatsch/remoteMe.git
@@ -90,7 +91,7 @@ go run ./cmd/agent -server http://127.0.0.1:8080</code></pre>
   <tr><td>Übernahme mit Code und Zugriffspasswort, Einmalcode</td><td>getestet (Server und Weboberfläche)</td></tr>
   <tr><td>Sicherheit</td><td>eigene Prüfung (kein unabhängiger Test); keine Ende-zu-Ende-Verschlüsselung, der Server sieht Bild und Eingaben</td></tr>
   <tr><td>Fernzugriff aus der nativen Mac-App</td><td>im Praxistest</td></tr>
-  <tr><td>Agent Windows: Bild, Maus, Dateien</td><td>Stand 1.0 getestet, Übernahme mit 1.2; Download 1.3.0 und H.264 über ffmpeg noch ungeprüft</td></tr>
+  <tr><td>Agent Windows: Bild, Maus, Dateien</td><td>Dienst, gesperrter Rechner, Bild und Tastatur automatisch getestet (1.4.0); Praxistest läuft</td></tr>
   <tr><td>Agent Linux (X11)</td><td>kompiliert, noch nicht auf Gerät geprüft</td></tr>
 </table>
 <p style="color:var(--mut)">Der JPEG-Modus bleibt als Fallback. Details und offene Aufgaben: <a href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md" style="color:var(--acc)">DEVELOPMENT.md</a>.</p>

@@ -55,8 +55,8 @@ func goRemoteDevices() *C.char {
 }
 
 //export goRemoteApprove
-func goRemoteApprove(id, code *C.char) *C.char {
-	return cerr(acct.approve(C.GoString(id), C.GoString(code)))
+func goRemoteApprove(id, code, password *C.char) *C.char {
+	return cerr(acct.approve(C.GoString(id), C.GoString(code), C.GoString(password)))
 }
 
 //export goRemoteRemove

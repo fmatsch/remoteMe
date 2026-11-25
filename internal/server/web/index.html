@@ -35,6 +35,8 @@ header.top h1{font-size:18px;margin:0;flex:1}
 .dev .meta{color:var(--mut);font-size:13px;margin:4px 0 14px}
 .dev .row{display:flex;gap:8px}.dev .row .pri{flex:1}
 .dev input{margin-bottom:8px;letter-spacing:.2em;font:600 18px ui-monospace,Consolas,monospace;text-align:center}
+.dev input.pw{letter-spacing:normal;font:inherit}
+.dev input::placeholder{letter-spacing:normal;font:14px system-ui,sans-serif}
 .help{margin-top:22px;color:var(--mut);font-size:14px}
 .help ol{padding-left:20px;margin:6px 0}
 h2{font-size:16px;margin:0}
@@ -89,14 +91,14 @@ h2{font-size:16px;margin:0}
 <div id="home" class="hide">
   <header class="top"><h1>remoteMe</h1><span id="who" style="color:var(--mut)"></span><button id="logout">Abmelden</button></header>
   <div class="wrap">
-    <h2>Meine Computer</h2>
+    <h2>Computer</h2>
     <div class="grid" id="devs"></div>
     <div class="card help hide" id="empty">
-      <b>Noch kein Computer verbunden.</b>
+      <b>Noch kein Computer verfügbar.</b>
       <ol>
         <li>Starte den remoteMe-Agent auf dem Computer, auf den du zugreifen willst.</li>
-        <li>Gib dort den Server und deinen Benutzernamen <b id="myname"></b> ein.</li>
-        <li>Der Agent zeigt einen Code an – gib ihn hier beim neuen Gerät ein, um den Zugriff freizugeben.</li>
+        <li>Gib dort den Server ein und lege ein Zugriffspasswort fest.</li>
+        <li>Der Computer erscheint hier als „verfügbar“. Übernimm ihn mit dem dort angezeigten Code und dem Zugriffspasswort.</li>
       </ol>
     </div>
   </div>
@@ -173,7 +175,7 @@ $('logout').onclick = async () => { await api('/api/logout', 'POST').catch(() =>
 let poll;
 function stopPoll() { clearInterval(poll); poll = null; }
 function enterHome() {
-  show('home'); $('who').textContent = me; $('myname').textContent = '„' + me + '“';
+  show('home'); $('who').textContent = me;
   loadDevices(); stopPoll(); poll = setInterval(loadDevices, 3000);
 }
 let lastDevJson = '';
@@ -183,14 +185,20 @@ async function loadDevices() {
   try { list = await api('/api/devices'); } catch (e) { if (e.status === 401) { stopPoll(); show('auth'); } return; }
   const j = JSON.stringify(list); if (j === lastDevJson) return; lastDevJson = j;
   $('empty').classList.toggle('hide', list.length > 0);
-  $('devs').innerHTML = list.map(d => `
+  $('devs').innerHTML = list.map(d => {
+    const state = d.claimable ? 'verfügbar' : !d.approved ? 'wartet auf Freigabe' : d.online ? (d.busy ? 'online (in Benutzung)' : 'online') : 'offline';
+    const actions = d.approved
+      ? `<div class="row"><button class="pri act-conn" ${d.online ? '' : 'disabled'}>Verbinden</button><button class="danger act-del">Entfernen</button></div>`
+      : `<input type="text" inputmode="numeric" maxlength="6" placeholder="Code vom Zielrechner" class="code" autocomplete="off">
+        ${d.needsPassword ? '<input type="password" placeholder="Zugriffspasswort" class="pw" autocomplete="off">' : ''}
+        <div class="row"><button class="pri act-ok">${d.claimable ? 'Übernehmen' : 'Freigeben'}</button>${d.claimable ? '' : '<button class="danger act-del">Ablehnen</button>'}</div>`;
+    return `
     <div class="card dev" data-id="${d.id}">
       <div class="name"><span class="dot ${!d.approved ? 'pend' : d.online ? 'on' : ''}"></span>${esc(d.name || 'Unbenannt')}</div>
-      <div class="meta">${osName[d.os] || esc(d.os)} · ${!d.approved ? 'wartet auf Freigabe' : d.online ? (d.busy ? 'online (in Benutzung)' : 'online') : 'offline'}</div>
-      ${!d.approved ? `<input type="text" inputmode="numeric" maxlength="6" placeholder="Code vom Zielrechner" class="code">
-        <div class="row"><button class="pri act-ok">Freigeben</button><button class="danger act-del">Ablehnen</button></div>`
-      : `<div class="row"><button class="pri act-conn" ${d.online ? '' : 'disabled'}>Verbinden</button><button class="danger act-del">Entfernen</button></div>`}
-    </div>`).join('');
+      <div class="meta">${osName[d.os] || esc(d.os)} · ${state}</div>
+      ${actions}
+    </div>`;
+  }).join('');
 };
 $('devs').onclick = async e => {
   const card = e.target.closest('.dev'); if (!card) return;
@@ -200,7 +208,8 @@ $('devs').onclick = async e => {
     if (!confirm('Dieses Gerät wirklich entfernen? Der Zugriff wird sofort beendet.')) return;
     await api('/api/devices/' + id, 'DELETE').catch(err => toast(err.message)); lastDevJson = ''; loadDevices();
   } else if (e.target.classList.contains('act-ok')) {
-    try { await api(`/api/devices/${id}/approve`, 'POST', {code: card.querySelector('.code').value}); toast('Gerät freigegeben'); }
+    const pw = card.querySelector('.pw');
+    try { await api(`/api/devices/${id}/approve`, 'POST', {code: card.querySelector('.code').value, password: pw ? pw.value : ''}); toast('Gerät freigegeben'); }
     catch (err) { toast(err.message); }
     lastDevJson = ''; document.activeElement.blur(); loadDevices();
   }

@@ -85,10 +85,15 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 
 ## 3. Kopplung & Sicherheit
 
-1. Agent ruft `POST /api/agent/pair {username,name,os}` → Server legt ein **unfreigegebenes** Gerät für den Benutzer an und liefert `id`, `secret` (Hash wird gespeichert) und einen 6-stelligen **Code** (nur am Agent sichtbar).
-2. Agent verbindet sich per WebSocket (`X-Device-Id` + `Authorization: Bearer <secret>`), darf aber bis zur Freigabe keine Daten an Viewer liefern.
-3. Benutzer gibt im Browser den Code ein (`POST /api/devices/{id}/approve`). 5 Fehlversuche löschen die Anfrage; offene Anfragen verfallen nach 30 min; max. 5 offene je Benutzer.
-4. Gerät entfernen (`DELETE /api/devices/{id}`) sendet `revoked` an den Agent, der seine Kopplung löscht.
+1. Agent ruft `POST /api/agent/pair {name,os,password}` → Server legt ein **verfügbares** Gerät ohne Besitzer an und liefert `id`, `secret` (Hash wird gespeichert) und einen 6-stelligen **Code** (nur am Agent sichtbar). Das **Zugriffspasswort** (≥ 6 Zeichen) wird am Zielrechner vergeben, dort nicht gespeichert; der Server hält nur einen bcrypt-Hash bis zur Übernahme.
+2. Agent verbindet sich per WebSocket (`X-Device-Id` + `Authorization: Bearer <secret>`), liefert aber bis zur Freigabe keine Daten an Viewer.
+3. Jeder angemeldete Benutzer sieht verfügbare Rechner, solange sie online sind. Übernahme: `POST /api/devices/{id}/approve {code,password}` → das Gerät gehört danach diesem Benutzer, Code und Passwort-Hash werden gelöscht. Raten ist begrenzt (5 je Gerät, 20 je Benutzer in 15 min). Verfügbare Geräte verfallen erst, wenn sie 7 Tage offline waren; höchstens 100 gleichzeitig.
+4. Gerät entfernen (`DELETE /api/devices/{id}`, nur Besitzer) sendet `revoked` an den Agent, der seine Kopplung löscht.
+5. Ältere Agents (1.1) schicken `username` statt `password`: das Gerät gehört sofort diesem Benutzer, Freigabe nur mit Code (30 min, 5 Versuche, max. 5 offene).
+
+Wer sich anmelden kann, sieht Namen und System aller verfügbaren Rechner – Registrierung deshalb geschlossen lassen.
+
+**Rollen (Mac-App):** „Nur als Ziel“ oder „Vollversion“ (`role` im Konfigurationsordner, `cmd/agent/role.go`); die Auswahl erscheint beim ersten Start und ist im Einstellungsfenster änderbar. In der Ziel-Rolle sind die Fernsteuer-Menüpunkte ausgeblendet (reine Oberflächen-Einstellung, keine Sicherheitsgrenze).
 
 Weitere Maßnahmen: Passwörter bcrypt, Cookie `fw_session` (HttpOnly, SameSite=Strict, Secure hinter HTTPS), alle schreibenden API-Aufrufe brauchen den Header `X-FW`, WebSocket-Origin-Prüfung, Login-Limit (5/10 min je Name+IP), Registrierung nur für den ersten Benutzer (außer `-open-registration`).
 
@@ -125,7 +130,7 @@ Steuernachrichten sind JSON-Textframes mit Feld `t`, Daten sind Binärframes mit
 
 * Upload (`POST /api/devices/{id}/upload?dir=&name=`): Relay sendet `{t:"ul-begin",req,dir,name,size}`, dann Binär `[0x04][req u32][Daten]`, dann `{t:"ul-end",req}`. Agent antwortet `{t:"ul-done",req,path|err}`.
 * Download (`GET /api/devices/{id}/download?path=`): Relay sendet `{t:"dl",req,path}`; Agent antwortet `{t:"dl-head",req,name,size}`, Binär `[0x03][req u32][Daten]`, `{t:"dl-end",req}` bzw. `{t:"dl-err",req,err}`. Ordner werden als ZIP gestreamt (Größe unbekannt → chunked). `{t:"dl-cancel"}` bricht ab.
-* Relay → Agent: `{t:"viewer",on}` startet/stoppt Aufnahme, `{t:"approved"}`, `{t:"revoked"}`.
+* Relay → Agent: `{t:"viewer",on}` startet/stoppt Aufnahme, `{t:"welcome",approved,owner}`, `{t:"approved",owner}`, `{t:"revoked"}`.
 
 ### Tastatur-Logik
 
@@ -162,6 +167,6 @@ Der Viewer schickt `code` (physische Taste) und `key` (Zeichen). Der Agent tippt
 * **DPI:** Windows-Agent ruft `SetProcessDPIAware` beim Start, sonst stimmen Bildgröße und Mauskoordinaten bei Skalierung nicht.
 * **Browser-Tastaturen:** Reservierte Kombinationen (Strg+W, Strg+T, Alt+Tab) lassen sich nur im Vollbild mit der Keyboard-Lock-API abfangen (Chrome/Edge).
 * **`kbinani/screenshot` ist auf dem Mac langsam** (~225 ms pro Bild, also ~4 Bilder/s): nur noch Fallback/JPEG. Der Videopfad nutzt ScreenCaptureKit.
-* **Server hält Benutzer im Speicher:** `server adduser …` schreibt die Datei, ein laufender Server überschreibt sie später mit seinem Stand. Dienst vorher stoppen (`systemctl stop remoteme`), dann `adduser`, dann starten.
+* **Server hält Benutzer im Speicher:** `server adduser|setuser|deluser` nur bei gestopptem Dienst ausführen, sonst überschreibt der laufende Server die Änderung. `deploy/user.sh` erledigt Stoppen und Starten. Sitzungs-Token sind an den Passwort-Hash gebunden.
 * **Heredocs im Deploy-Skript:** verschachtelte `EOF` brechen Shell-Aufrufe; deshalb die Server-Seite in `deploy/remote-install.sh`.
 * Beim Start des Agents öffnet sich der Standardbrowser, solange er nicht gekoppelt ist; `-background` unterdrückt das nur bei bestehender Kopplung.

@@ -5,7 +5,10 @@
 // Von Go bereitgestellt (app_darwin.go)
 extern char *goAppStatus(void);
 extern char *goWinState(void);
-extern char *goWinPair(const char *server, const char *user, const char *name, int autostart);
+extern char *goWinPair(const char *server, const char *name, const char *password, int autostart);
+extern char *goWinRole(void);
+extern void goWinSetRole(const char *role);
+extern int goWinPaired(void);
 extern void goWinUnpair(void);
 extern void goWinAutostart(int on);
 extern void goAppQuit(void);
@@ -31,7 +34,10 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 @property(strong) NSMenuItem *statusLine;
 @property(strong) NSWindow *win;
 @property(strong) NSView *setupView, *statusView;
-@property(strong) NSTextField *fServer, *fUser, *fName, *setupErr;
+@property(strong) NSTextField *fServer, *fName, *fPw, *fPw2, *setupErr;
+@property(strong) NSView *roleView;
+@property(strong) NSButton *cFull, *cFull2, *remoteBtn, *remoteBtn2;
+@property(strong) NSMenuItem *remoteItem;
 @property(strong) NSButton *cAuto, *cAuto2, *goBtn, *unpairBtn;
 @property(strong) NSTextField *stText, *stCode, *stInfo, *stHint, *stErr;
 @property(strong) NSView *dot;
@@ -41,7 +47,7 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 @implementation FWApp
 
 #define W 440
-#define H 480
+#define H 540
 
 - (void)buildWindow {
 	self.win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, W, H)
@@ -55,36 +61,36 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	// ---- Einrichtung ----
 	NSView *s = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
 	[s addSubview:label(@"remoteMe einrichten", NSMakeRect(28, H - 62, W - 56, 26), 20, YES, nil)];
-	[s addSubview:wrapLabel(@"Dieser Computer soll von der Ferne aus erreichbar sein. Gib den Benutzer ein, der Zugriff bekommen soll.", NSMakeRect(28, H - 112, W - 56, 44), nil)];
+	[s addSubview:wrapLabel(@"Dieser Computer soll von der Ferne aus erreichbar sein. Lege ein Zugriffspasswort fest: Wer ihn übernehmen will, braucht dieses Passwort und den Code.", NSMakeRect(28, H - 112, W - 56, 44), nil)];
 	CGFloat y = H - 142;
-	[s addSubview:label(@"Server", NSMakeRect(28, y, W - 56, 16), 12, YES, nil)];
-	self.fServer = [[NSTextField alloc] initWithFrame:NSMakeRect(28, y - 28, W - 56, 24)];
+	NSTextField *(^row)(NSString *, NSTextField *, CGFloat) = ^(NSString *title, NSTextField *f, CGFloat top) {
+		[s addSubview:label(title, NSMakeRect(28, top, W - 56, 16), 12, YES, nil)];
+		f.frame = NSMakeRect(28, top - 28, W - 56, 24);
+		[s addSubview:f];
+		return f;
+	};
+	self.fServer = row(@"Server", [[NSTextField alloc] init], y);
 	self.fServer.placeholderString = @"https://remoteme.example.com";
-	[s addSubview:self.fServer];
-	y -= 62;
-	[s addSubview:label(@"Benutzer, der zugreifen darf", NSMakeRect(28, y, W - 56, 16), 12, YES, nil)];
-	self.fUser = [[NSTextField alloc] initWithFrame:NSMakeRect(28, y - 28, W - 56, 24)];
-	self.fUser.placeholderString = @"Benutzername";
-	[s addSubview:self.fUser];
-	y -= 62;
-	[s addSubview:label(@"Name dieses Computers", NSMakeRect(28, y, W - 56, 16), 12, YES, nil)];
-	self.fName = [[NSTextField alloc] initWithFrame:NSMakeRect(28, y - 28, W - 56, 24)];
-	[s addSubview:self.fName];
-	y -= 52;
+	self.fName = row(@"Name dieses Computers", [[NSTextField alloc] init], y - 60);
+	self.fPw = row(@"Zugriffspasswort (mindestens 6 Zeichen)", [[NSSecureTextField alloc] init], y - 120);
+	self.fPw2 = row(@"Passwort wiederholen", [[NSSecureTextField alloc] init], y - 180);
 	self.cAuto = [NSButton checkboxWithTitle:@"Beim Anmelden automatisch starten" target:self action:nil];
-	self.cAuto.frame = NSMakeRect(28, y, W - 56, 20);
+	self.cAuto.frame = NSMakeRect(28, y - 240, W - 56, 20);
 	self.cAuto.state = NSControlStateValueOn;
 	[s addSubview:self.cAuto];
-	self.setupErr = wrapLabel(@"", NSMakeRect(28, 62, W - 56, 34), NSColor.systemRedColor);
+	self.cFull = [NSButton checkboxWithTitle:@"Vollversion: auch andere Computer fernsteuern" target:self action:@selector(toggleFull:)];
+	self.cFull.frame = NSMakeRect(28, y - 266, W - 56, 20);
+	[s addSubview:self.cFull];
+	self.setupErr = wrapLabel(@"", NSMakeRect(28, 60, W - 56, 34), NSColor.systemRedColor);
 	[s addSubview:self.setupErr];
 	self.goBtn = [NSButton buttonWithTitle:@"Verbinden" target:self action:@selector(doPair:)];
 	self.goBtn.frame = NSMakeRect(W - 28 - 120, 20, 120, 32);
 	self.goBtn.keyEquivalent = @"\r";
 	self.goBtn.bezelStyle = NSBezelStyleRounded;
 	[s addSubview:self.goBtn];
-	NSButton *r1 = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
-	r1.frame = NSMakeRect(28, 20, 230, 32);
-	[s addSubview:r1];
+	self.remoteBtn = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
+	self.remoteBtn.frame = NSMakeRect(28, 20, 230, 32);
+	[s addSubview:self.remoteBtn];
 	self.setupView = s;
 
 	// ---- Status ----
@@ -96,7 +102,7 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	[t addSubview:self.dot];
 	self.stText = label(@"", NSMakeRect(48, H - 100, W - 76, 20), 14, YES, nil);
 	[t addSubview:self.stText];
-	self.stHint = wrapLabel(@"Gib diesen Code in der Weboberfläche beim neuen Gerät ein, um den Zugriff freizugeben:", NSMakeRect(28, H - 160, W - 56, 44), nil);
+	self.stHint = wrapLabel(@"Zum Übernehmen in der App oder Weboberfläche diesen Code und das Zugriffspasswort eingeben:", NSMakeRect(28, H - 160, W - 56, 44), nil);
 	[t addSubview:self.stHint];
 	self.stCode = label(@"", NSMakeRect(28, H - 240, W - 56, 64), 44, YES, nil);
 	self.stCode.font = [NSFont monospacedSystemFontOfSize:44 weight:NSFontWeightBold];
@@ -104,22 +110,40 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	[t addSubview:self.stCode];
 	self.stInfo = wrapLabel(@"", NSMakeRect(28, H - 300, W - 56, 44), nil);
 	[t addSubview:self.stInfo];
-	self.stErr = wrapLabel(@"", NSMakeRect(28, 130, W - 56, 40), NSColor.systemRedColor);
+	self.stErr = wrapLabel(@"", NSMakeRect(28, 160, W - 56, 40), NSColor.systemRedColor);
 	[t addSubview:self.stErr];
 	self.cAuto2 = [NSButton checkboxWithTitle:@"Beim Anmelden automatisch starten" target:self action:@selector(toggleAuto:)];
-	self.cAuto2.frame = NSMakeRect(28, 100, W - 56, 20);
+	self.cAuto2.frame = NSMakeRect(28, 124, W - 56, 20);
+	self.cFull2 = [NSButton checkboxWithTitle:@"Vollversion: auch andere Computer fernsteuern" target:self action:@selector(toggleFull:)];
+	self.cFull2.frame = NSMakeRect(28, 100, W - 56, 20);
+	[t addSubview:self.cFull2];
 	[t addSubview:self.cAuto2];
 	self.unpairBtn = [NSButton buttonWithTitle:@"Zugriff widerrufen und Kopplung lösen" target:self action:@selector(doUnpair:)];
 	self.unpairBtn.frame = NSMakeRect(28, 20, W - 56, 32);
 	self.unpairBtn.bezelStyle = NSBezelStyleRounded;
 	[t addSubview:self.unpairBtn];
-	NSButton *r2 = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
-	r2.frame = NSMakeRect(28, 56, W - 56, 32);
-	[t addSubview:r2];
+	self.remoteBtn2 = [NSButton buttonWithTitle:@"Auf andere Computer zugreifen …" target:self action:@selector(openRemote:)];
+	self.remoteBtn2.frame = NSMakeRect(28, 56, W - 56, 32);
+	[t addSubview:self.remoteBtn2];
 	self.statusView = t;
 
+	NSView *c = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, W, H)];
+	[c addSubview:label(@"Willkommen bei remoteMe", NSMakeRect(28, H - 62, W - 56, 26), 20, YES, nil)];
+	[c addSubview:wrapLabel(@"Wie soll dieser Computer verwendet werden? Du kannst das später ändern.", NSMakeRect(28, H - 112, W - 56, 36), nil)];
+	NSButton *bt = [NSButton buttonWithTitle:@"Nur als Ziel" target:self action:@selector(chooseTarget:)];
+	bt.frame = NSMakeRect(28, H - 170, W - 56, 36);
+	[c addSubview:bt];
+	[c addSubview:wrapLabel(@"Dieser Computer kann ferngesteuert werden. Er selbst steuert keine anderen.", NSMakeRect(28, H - 212, W - 56, 36), nil)];
+	NSButton *bf = [NSButton buttonWithTitle:@"Vollversion" target:self action:@selector(chooseFull:)];
+	bf.frame = NSMakeRect(28, H - 272, W - 56, 36);
+	[c addSubview:bf];
+	[c addSubview:wrapLabel(@"Zusätzlich andere Computer anzeigen, übernehmen und fernsteuern.", NSMakeRect(28, H - 314, W - 56, 36), nil)];
+	self.roleView = c;
+
+	[root addSubview:self.roleView];
 	[root addSubview:self.setupView];
 	[root addSubview:self.statusView];
+	self.setupView.hidden = YES;
 	self.statusView.hidden = YES;
 }
 
@@ -141,12 +165,19 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 - (void)refresh:(id)t {
 	char *s = goAppStatus();
 	if (s) { self.statusLine.title = [NSString stringWithUTF8String:s]; free(s); }
+	[self applyRole];
 	if (!self.win || !self.win.isVisible) return;
 	NSDictionary *st = [self state];
 	NSString *status = st[@"status"];
 	BOOL paired = ![status isEqualToString:@"unpaired"];
-	self.setupView.hidden = paired;
+	NSString *role = st[@"role"];
+	BOOL choose = !paired && role.length == 0;
+	BOOL full = [role isEqualToString:@"full"];
+	self.roleView.hidden = !choose;
+	self.setupView.hidden = paired || choose;
 	self.statusView.hidden = !paired;
+	self.cFull.state = self.cFull2.state = full ? NSControlStateValueOn : NSControlStateValueOff;
+	if (choose) return;
 	if (!paired) {
 		if (!self.prefilled) {
 			self.fServer.stringValue = st[@"defaultServer"] ?: @"";
@@ -158,7 +189,7 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 		return;
 	}
 	self.prefilled = NO;
-	NSDictionary *names = @{@"connecting": @"Verbindet …", @"pending": @"Wartet auf Freigabe", @"online": @"Verbunden – Zugriff möglich", @"error": @"Keine Verbindung"};
+	NSDictionary *names = @{@"connecting": @"Verbindet …", @"pending": @"Verfügbar – wartet auf Übernahme", @"online": @"Verbunden – Zugriff möglich", @"error": @"Keine Verbindung"};
 	NSDictionary *cols = @{@"online": NSColor.systemGreenColor, @"error": NSColor.systemRedColor, @"pending": NSColor.systemOrangeColor};
 	self.stText.stringValue = names[status] ?: status;
 	NSColor *dc = cols[status]; self.dot.layer.backgroundColor = (dc ?: NSColor.systemGrayColor).CGColor;
@@ -167,7 +198,8 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	self.stHint.hidden = !pend;
 	self.stCode.hidden = !pend;
 	self.stCode.stringValue = pend ? code : @"";
-	self.stInfo.stringValue = [NSString stringWithFormat:@"Benutzer: %@\nServer: %@", st[@"username"] ?: @"", st[@"server"] ?: @""];
+	NSString *owner = st[@"username"];
+	self.stInfo.stringValue = [NSString stringWithFormat:@"%@Server: %@", owner.length ? [NSString stringWithFormat:@"Zugeordnet zu: %@\n", owner] : @"", st[@"server"] ?: @""];
 	self.stErr.stringValue = [status isEqualToString:@"error"] ? (st[@"error"] ?: @"") : @"";
 	self.cAuto2.state = [st[@"autostart"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
 }
@@ -178,10 +210,15 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	self.goBtn.enabled = NO;
 	self.goBtn.title = @"Verbinde …";
 	self.setupErr.stringValue = @"";
-	NSString *sv = self.fServer.stringValue, *us = self.fUser.stringValue, *nm = self.fName.stringValue;
+	NSString *sv = self.fServer.stringValue, *nm = self.fName.stringValue, *pw = self.fPw.stringValue;
+	if (![pw isEqualToString:self.fPw2.stringValue]) {
+		self.setupErr.stringValue = @"Die Passwörter stimmen nicht überein";
+		self.busy = NO; self.goBtn.enabled = YES; self.goBtn.title = @"Verbinden";
+		return;
+	}
 	int au = self.cAuto.state == NSControlStateValueOn;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-		char *e = goWinPair(sv.UTF8String, us.UTF8String, nm.UTF8String, au);
+		char *e = goWinPair(sv.UTF8String, nm.UTF8String, pw.UTF8String, au);
 		NSString *err = e ? [NSString stringWithUTF8String:e] : nil;
 		if (e) free(e);
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -189,6 +226,10 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 			self.goBtn.enabled = YES;
 			self.goBtn.title = @"Verbinden";
 			self.setupErr.stringValue = err ?: @"";
+			if (!err) {
+				self.fPw.stringValue = @""; self.fPw2.stringValue = @"";
+				fwRequestPermissions(); // Freigaben erst anfragen, wenn der Computer wirklich Ziel ist
+			}
 			[self refresh:nil];
 		});
 	});
@@ -200,7 +241,25 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	a.informativeText = @"Dieser Computer ist danach nicht mehr aus der Ferne erreichbar, bis du ihn neu einrichtest.";
 	[a addButtonWithTitle:@"Widerrufen"];
 	[a addButtonWithTitle:@"Abbrechen"];
-	if ([a runModal] == NSAlertFirstButtonReturn) { goWinUnpair(); self.fUser.stringValue = @""; [self refresh:nil]; }
+	if ([a runModal] == NSAlertFirstButtonReturn) { goWinUnpair(); [self refresh:nil]; }
+}
+
+- (void)setRole:(NSString *)r {
+	goWinSetRole(r.UTF8String);
+	[self refresh:nil];
+}
+- (void)chooseTarget:(id)s { [self setRole:@"target"]; }
+- (void)chooseFull:(id)s { [self setRole:@"full"]; }
+- (void)toggleFull:(NSButton *)b { [self setRole:b.state == NSControlStateValueOn ? @"full" : @"target"]; }
+
+// Fernsteuer-Funktionen nur in der Vollversion zeigen.
+- (void)applyRole {
+	char *r = goWinRole();
+	BOOL full = r && strcmp(r, "full") == 0;
+	free(r);
+	self.remoteItem.hidden = !full;
+	self.remoteBtn.hidden = !full;
+	self.remoteBtn2.hidden = !full;
 }
 
 - (void)toggleAuto:(id)s { goWinAutostart(self.cAuto2.state == NSControlStateValueOn); }
@@ -231,7 +290,8 @@ static NSTextField *wrapLabel(NSString *t, NSRect f, NSColor *c) {
 	self.statusLine = [m addItemWithTitle:@"remoteMe" action:nil keyEquivalent:@""];
 	self.statusLine.enabled = NO;
 	[m addItem:[NSMenuItem separatorItem]];
-	[m addItemWithTitle:@"Meine Computer …" action:@selector(openRemote:) keyEquivalent:@"l"].target = self;
+	self.remoteItem = [m addItemWithTitle:@"Computer fernsteuern …" action:@selector(openRemote:) keyEquivalent:@"l"];
+	self.remoteItem.target = self;
 	[m addItemWithTitle:@"Einstellungen dieses Computers …" action:@selector(openUI:) keyEquivalent:@","].target = self;
 	[m addItemWithTitle:@"Berechtigungen prüfen …" action:@selector(perms:) keyEquivalent:@""].target = self;
 	[m addItem:[NSMenuItem separatorItem]];
@@ -279,7 +339,7 @@ void fwRunApp(int showWindow) {
 		[gApp setupMenus];
 		[gApp refresh:nil];
 		if (showWindow) fwShowWindow();
-		fwRequestPermissions();
+		if (goWinPaired()) fwRequestPermissions();
 		[app run];
 	}
 }

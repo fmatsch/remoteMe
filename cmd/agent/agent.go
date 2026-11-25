@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const version = "1.1.0"
+const version = "1.2.0"
 
 // Msg ist die gemeinsame JSON-Nachricht zwischen Viewer, Relay und Agent.
 type Msg struct {
@@ -48,7 +48,8 @@ type Msg struct {
 	N    uint32  `json:"n"`     // kumulativ bestätigte Bilder
 	Cod  string  `json:"codec"` // gewünschter Codec: "h264" oder "jpeg"
 
-	Approved bool `json:"approved"`
+	Approved bool   `json:"approved"`
+	Owner    string `json:"owner"` // Benutzer, der diesen Computer übernommen hat
 }
 
 type Agent struct {
@@ -125,6 +126,20 @@ func (a *Agent) currentConn() *websocket.Conn {
 	a.wmu.Lock()
 	defer a.wmu.Unlock()
 	return a.conn
+}
+
+// setOwner merkt sich, wem der Computer zugeordnet ist (Anzeige).
+func (a *Agent) setOwner(owner string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil || (a.cfg.Approved && (owner == "" || a.cfg.Username == owner)) {
+		return
+	}
+	a.cfg.Approved, a.cfg.Code = true, ""
+	if owner != "" {
+		a.cfg.Username = owner
+	}
+	saveConfig(a.cfg)
 }
 
 func (a *Agent) sleep(ctx context.Context, d time.Duration) {
@@ -278,6 +293,7 @@ func (a *Agent) handle(ctx context.Context, m *Msg) {
 	switch m.T {
 	case "welcome":
 		if m.Approved {
+			a.setOwner(m.Owner)
 			a.setStatus("online", "")
 		} else {
 			a.setStatus("pending", "")
@@ -286,6 +302,9 @@ func (a *Agent) handle(ctx context.Context, m *Msg) {
 		a.mu.Lock()
 		if a.cfg != nil {
 			a.cfg.Approved, a.cfg.Code = true, ""
+			if m.Owner != "" {
+				a.cfg.Username = m.Owner
+			}
 			saveConfig(a.cfg)
 		}
 		a.mu.Unlock()

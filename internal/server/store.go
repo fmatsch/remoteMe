@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ type Device struct {
 	SecretHash string    `json:"secretHash"`
 	Approved   bool      `json:"approved"`
 	Code       string    `json:"code,omitempty"`
+	PassHash   string    `json:"passHash,omitempty"` // Zugriffspasswort des Zielrechners (bcrypt), nur bis zur Übernahme
 	Tries      int       `json:"tries,omitempty"`
 	Created    time.Time `json:"created"`
 	LastSeen   time.Time `json:"lastSeen"`
@@ -51,11 +53,15 @@ var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.
 var nameRe = regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
 
 const (
-	pendingTTL  = 30 * time.Minute
-	maxPending  = 5
-	maxTries    = 5
-	sessionTTL  = 14 * 24 * time.Hour
-	minPassword = 8
+	pendingTTL = 30 * time.Minute
+	maxPending = 5
+	// Rechner ohne Besitzer ("verfügbar"): Obergrenze und Verfall, wenn sie länger offline sind.
+	maxUnclaimed = 100
+	unclaimedTTL = 7 * 24 * time.Hour
+	minAccessPW  = 6
+	maxTries     = 5
+	sessionTTL   = 14 * 24 * time.Hour
+	minPassword  = 8
 )
 
 func OpenStore(path string) (*Store, error) {
@@ -161,10 +167,60 @@ func (s *Store) HasUser(name string) bool {
 	return s.Users[NormalizeName(name)] != nil
 }
 
-// Sitzungs-Token: base64(user|ablauf).hmac
+// SetPassword legt den Benutzer an oder ändert sein Passwort. created meldet, ob er neu ist.
+func (s *Store) SetPassword(name, password string) (created bool, err error) {
+	name = NormalizeName(name)
+	if !s.HasUser(name) {
+		return true, s.AddUser(name, password)
+	}
+	if len(password) < minPassword {
+		return false, fmt.Errorf("Passwort muss mindestens %d Zeichen haben", minPassword)
+	}
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return false, errors.New("Passwort ist zu lang")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Users[name].Hash = string(h)
+	return false, s.saveLocked()
+}
+
+// DeleteUser entfernt den Benutzer samt seinen Geräten. Der letzte Benutzer bleibt erhalten,
+// weil sich sonst wieder jeder als erster Benutzer registrieren könnte.
+func (s *Store) DeleteUser(name string) error {
+	name = NormalizeName(name)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Users[name] == nil {
+		return errors.New("Benutzer nicht gefunden")
+	}
+	if len(s.Users) == 1 {
+		return errors.New("Der letzte Benutzer kann nicht gelöscht werden")
+	}
+	delete(s.Users, name)
+	for id, d := range s.Devices {
+		if d.Owner == name {
+			delete(s.Devices, id)
+		}
+	}
+	return s.saveLocked()
+}
+
+func (s *Store) userHash(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u := s.Users[NormalizeName(name)]; u != nil {
+		return u.Hash
+	}
+	return ""
+}
+
+// Sitzungs-Token: base64(user|ablauf).hmac – die Signatur hängt am Passwort-Hash,
+// eine Passwortänderung beendet damit alle bestehenden Anmeldungen.
 func (s *Store) MakeToken(user string) string {
 	p := base64.RawURLEncoding.EncodeToString([]byte(user + "|" + strconv.FormatInt(time.Now().Add(sessionTTL).Unix(), 10)))
-	return p + "." + s.sign(p)
+	return p + "." + s.sign(p+"|"+s.userHash(user))
 }
 
 func (s *Store) sign(p string) string {
@@ -179,9 +235,6 @@ func (s *Store) VerifyToken(tok string) (string, bool) {
 		return "", false
 	}
 	p, sig := tok[:i], tok[i+1:]
-	if subtle.ConstantTimeCompare([]byte(sig), []byte(s.sign(p))) != 1 {
-		return "", false
-	}
 	raw, err := base64.RawURLEncoding.DecodeString(p)
 	if err != nil {
 		return "", false
@@ -190,33 +243,53 @@ func (s *Store) VerifyToken(tok string) (string, bool) {
 	if len(parts) != 2 {
 		return "", false
 	}
+	hash := s.userHash(parts[0])
+	if hash == "" || subtle.ConstantTimeCompare([]byte(sig), []byte(s.sign(p+"|"+hash))) != 1 {
+		return "", false
+	}
 	exp, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil || time.Now().Unix() > exp || !s.HasUser(parts[0]) {
+	if err != nil || time.Now().Unix() > exp {
 		return "", false
 	}
 	return parts[0], true
 }
 
 // NewPending legt ein noch nicht freigegebenes Gerät an. Rückgabe: ID, Geheimnis, Code.
-func (s *Store) NewPending(owner, name, osName string) (id, secret, code string, err error) {
+// Ohne owner ist das Gerät "verfügbar": jeder angemeldete Benutzer sieht es und kann es mit
+// Code und Zugriffspasswort übernehmen. Mit owner (ältere Agents) gehört es von Anfang an diesem Benutzer.
+func (s *Store) NewPending(owner, name, osName, password string) (id, secret, code string, err error) {
 	owner = NormalizeName(owner)
+	var passHash string
+	if password != "" || owner == "" {
+		if len(password) < minAccessPW {
+			return "", "", "", fmt.Errorf("Das Zugriffspasswort muss mindestens %d Zeichen haben", minAccessPW)
+		}
+		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return "", "", "", errors.New("Zugriffspasswort ist zu lang")
+		}
+		passHash = string(h)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Users[owner] == nil {
+	if owner != "" && s.Users[owner] == nil {
 		return "", "", "", errors.New("Benutzer nicht gefunden")
 	}
-	pend := 0
+	pend, limit := 0, maxPending
+	if owner == "" {
+		limit = maxUnclaimed
+	}
 	for _, d := range s.Devices {
 		if d.Owner == owner && !d.Approved {
 			pend++
 		}
 	}
-	if pend >= maxPending {
-		return "", "", "", errors.New("Zu viele offene Anfragen für diesen Benutzer")
+	if pend >= limit {
+		return "", "", "", errors.New("Zu viele offene Anfragen")
 	}
 	id, secret, code = randHex(8), randHex(32), randCode()
 	s.Devices[id] = &Device{
-		ID: id, Owner: owner, Name: clip(name, 64), OS: clip(osName, 16),
+		ID: id, Owner: owner, Name: clip(name, 64), OS: clip(osName, 16), PassHash: passHash,
 		SecretHash: hashSecret(secret), Code: code, Created: time.Now(), LastSeen: time.Now(),
 	}
 	return id, secret, code, s.saveLocked()
@@ -256,28 +329,47 @@ func (s *Store) Touch(id, name, osName string) {
 	}
 }
 
-// Approve gibt ein Gerät mit dem am Zielrechner angezeigten Code frei.
-func (s *Store) Approve(owner, id, code string) error {
+// Approve gibt ein Gerät mit dem am Zielrechner angezeigten Code und dem dort vergebenen
+// Zugriffspasswort frei; ein verfügbares Gerät gehört danach dem Benutzer.
+func (s *Store) Approve(user, id, code, password string) error {
+	notFound, wrong := errors.New("Gerät nicht gefunden"), errors.New("Code oder Zugriffspasswort stimmt nicht")
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	d := s.Devices[id]
-	if d == nil || d.Owner != owner {
-		return errors.New("Gerät nicht gefunden")
+	if d == nil || (d.Owner != user && !(d.Owner == "" && !d.Approved)) {
+		s.mu.Unlock()
+		return notFound
 	}
 	if d.Approved {
+		s.mu.Unlock()
 		return nil
 	}
-	if subtle.ConstantTimeCompare([]byte(d.Code), []byte(strings.TrimSpace(code))) != 1 {
-		d.Tries++
-		if d.Tries >= maxTries {
-			delete(s.Devices, id)
-			s.saveLocked()
-			return errors.New("Zu viele Fehlversuche - Anfrage wurde verworfen")
-		}
-		s.saveLocked()
-		return errors.New("Code stimmt nicht")
+	passHash, want := d.PassHash, d.Code
+	s.mu.Unlock()
+
+	// bcrypt außerhalb der Sperre: dauert absichtlich lange.
+	ok := subtle.ConstantTimeCompare([]byte(want), []byte(strings.TrimSpace(code))) == 1
+	if passHash != "" && bcrypt.CompareHashAndPassword([]byte(passHash), []byte(password)) != nil {
+		ok = false
 	}
-	d.Approved, d.Code = true, ""
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d = s.Devices[id]
+	if d == nil || (d.Owner != user && !(d.Owner == "" && !d.Approved)) {
+		return notFound // inzwischen entfernt oder von jemand anderem übernommen
+	}
+	if !ok {
+		if d.Owner != "" { // eigene Anfrage (ältere Agents): nach zu vielen Fehlversuchen verwerfen
+			if d.Tries++; d.Tries >= maxTries {
+				delete(s.Devices, id)
+				s.saveLocked()
+				return errors.New("Zu viele Fehlversuche - Anfrage wurde verworfen")
+			}
+			s.saveLocked()
+		}
+		return wrong
+	}
+	d.Owner, d.Approved, d.Code, d.PassHash, d.Tries = user, true, "", "", 0
 	return s.saveLocked()
 }
 
@@ -303,25 +395,40 @@ func (s *Store) Device(id string) (Device, bool) {
 	return *d, true
 }
 
-func (s *Store) DevicesOf(owner string) []Device {
+// DevicesFor liefert die eigenen und alle noch verfügbaren (besitzerlosen) Geräte.
+func (s *Store) DevicesFor(user string) []Device {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Device
 	for _, d := range s.Devices {
-		if d.Owner == owner {
+		if d.Owner == user || (d.Owner == "" && !d.Approved) {
 			out = append(out, *d)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if a, b := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name); a != b {
+			return a < b
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
-// ExpirePending verwirft nicht freigegebene Anfragen nach pendingTTL.
-func (s *Store) ExpirePending() []string {
+// ExpirePending verwirft offene Anfragen: eigene nach pendingTTL, verfügbare Rechner erst,
+// wenn sie länger als unclaimedTTL nicht mehr verbunden waren.
+func (s *Store) ExpirePending(online func(id string) bool) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var gone []string
 	for id, d := range s.Devices {
-		if !d.Approved && time.Since(d.Created) > pendingTTL {
+		if d.Approved {
+			continue
+		}
+		expired := time.Since(d.Created) > pendingTTL
+		if d.Owner == "" {
+			expired = !online(id) && time.Since(d.LastSeen) > unclaimedTTL
+		}
+		if expired {
 			delete(s.Devices, id)
 			gone = append(gone, id)
 		}

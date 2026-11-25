@@ -9,7 +9,7 @@ import (
 // Config ist die gekoppelte Verbindung zum Relay-Server.
 type Config struct {
 	Server   string `json:"server"`
-	Username string `json:"username"`
+	Username string `json:"username"` // Besitzer; leer, solange niemand den Computer übernommen hat
 	ID       string `json:"id"`
 	Secret   string `json:"secret"`
 	Name     string `json:"name"`

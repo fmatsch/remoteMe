@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -34,8 +35,17 @@ func main() {
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", uiPort))
 	if err != nil {
-		// Läuft schon: nur die Einrichtungsseite öffnen.
+		// Läuft schon: nur das Fenster bzw. die Einrichtungsseite zeigen.
 		if !*background {
+			if nativeUI {
+				c := &http.Client{Timeout: 3 * time.Second}
+				if r, err := c.Post(fmt.Sprintf("http://127.0.0.1:%d/show", uiPort), "", nil); err == nil {
+					r.Body.Close()
+					if r.StatusCode == http.StatusNoContent {
+						return
+					}
+				}
+			}
 			openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", uiPort))
 		}
 		return

@@ -12,11 +12,11 @@ Beide Seiten verbinden sich **ausgehend** zum Server – am Zielrechner sind kei
 
 ## So funktioniert die Einrichtung
 
-1. **Am Rechner, von dem du zugreifst:** im Browser den Server öffnen und einen **Benutzer anlegen**.
-2. **Am Zielrechner:** den **Agent** starten. Es öffnet sich eine Einrichtungsseite. Dort Server-Adresse und **den Benutzernamen eintragen, der Zugriff bekommen soll**. Der Agent zeigt einen 6-stelligen **Freigabecode**.
-3. **Im Browser** erscheint der neue Computer als „wartet auf Freigabe“. Code eingeben → freigegeben. Danach ist der Computer jederzeit erreichbar (Autostart beim Anmelden ist optional).
+1. **Server:** im Browser öffnen und einen **Benutzer anlegen**.
+2. **Zielrechner:** remoteMe starten, Server eintragen und ein **Zugriffspasswort** festlegen (mindestens 6 Zeichen). Angezeigt wird ein 6-stelliger **Code**.
+3. **Am steuernden Rechner** (Mac-App „Computer fernsteuern“ oder Weboberfläche): der Zielrechner erscheint als **verfügbar**. Mit Code **und** Zugriffspasswort übernehmen. Danach reicht ein Klick auf „Verbinden“.
 
-Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand einfach deinen Benutzernamen am Agent eintippt und sich so auf deine Geräteliste schleust.
+Beim ersten Start fragt die Mac-App, ob der Computer **nur als Ziel** dienen oder als **Vollversion** auch andere fernsteuern soll (später änderbar).
 
 ## Server
 
@@ -32,6 +32,13 @@ Dass erst der Code vom Zielrechner den Zugriff freigibt, verhindert, dass jemand
 | `-open-registration` | Registrierung für alle erlauben. Ohne die Option kann **nur der erste Benutzer** sich registrieren, weitere mit `server adduser <name> <passwort>` |
 
 **Im Internet nur mit TLS betreiben** (Passwort, Sitzungs-Cookie und Bildschirminhalt laufen sonst im Klartext). Beispiel Caddy: `remoteme.example.com { reverse_proxy localhost:8080 }` – WebSockets funktionieren automatisch; `X-Forwarded-For` wird für das Login-Limit ausgewertet.
+
+**Benutzer verwalten** (Deployment mit `deploy/deploy.sh`):
+
+```bash
+deploy/user.sh                  # anlegen oder Passwort ändern (verdeckte Abfrage)
+deploy/user.sh --delete NAME    # Benutzer samt seinen Computern löschen
+```
 
 ## Agent
 

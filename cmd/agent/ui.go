@@ -30,6 +30,15 @@ func newUI(a *Agent, ln net.Listener) *ui {
 func (u *ui) serve(ln net.Listener) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", u.page)
+	// Zweiter Programmstart: laufende Instanz zeigt ihr Fenster (ohne Token, bewirkt nur das).
+	mux.HandleFunc("POST /show", func(w http.ResponseWriter, r *http.Request) {
+		if !nativeUI || !u.hostOK(r) || r.Header.Get("Origin") != "" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		showWindow()
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /state", u.guard(u.state))
 	mux.HandleFunc("POST /pair", u.guard(u.pair))
 	mux.HandleFunc("POST /unpair", u.guard(u.unpair))
@@ -90,22 +99,26 @@ func (u *ui) state(w http.ResponseWriter, r *http.Request) {
 
 func (u *ui) pair(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		Server, Username, Name string
+		Server, Name, Password string
 		Autostart              bool
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&b) != nil {
 		jsonOut(w, 400, map[string]string{"error": "Ungültige Eingabe"})
 		return
 	}
-	if err := u.a.pairDevice(b.Server, b.Username, b.Name, b.Autostart); err != nil {
+	if err := u.a.pairDevice(b.Server, b.Name, b.Password, b.Autostart); err != nil {
 		jsonOut(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
-// pairDevice meldet diesen Computer beim Server an; der Freigabecode erscheint danach im Status.
-func (a *Agent) pairDevice(server, username, name string, autostart bool) error {
+// minAccessPassword entspricht der Mindestlänge am Server.
+const minAccessPassword = 6
+
+// pairDevice meldet diesen Computer beim Server als verfügbar an. Wer ihn übernehmen will, braucht
+// den danach angezeigten Code und das hier vergebene Zugriffspasswort. Das Passwort wird nicht gespeichert.
+func (a *Agent) pairDevice(server, name, password string, autostart bool) error {
 	server = strings.TrimRight(strings.TrimSpace(server), "/")
 	if server == "" {
 		return errors.New("Bitte die Server-Adresse eingeben")
@@ -113,14 +126,14 @@ func (a *Agent) pairDevice(server, username, name string, autostart bool) error 
 	if !strings.Contains(server, "://") {
 		server = "https://" + server
 	}
-	if username = strings.TrimSpace(username); username == "" {
-		return errors.New("Bitte einen Benutzernamen eingeben")
+	if len(password) < minAccessPassword {
+		return fmt.Errorf("Das Zugriffspasswort muss mindestens %d Zeichen haben", minAccessPassword)
 	}
 	host, _ := os.Hostname()
 	if strings.TrimSpace(name) != "" {
 		host = strings.TrimSpace(name)
 	}
-	body, _ := json.Marshal(map[string]string{"username": username, "name": host, "os": runtime.GOOS})
+	body, _ := json.Marshal(map[string]string{"name": host, "os": runtime.GOOS, "password": password})
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Post(server+"/api/agent/pair", "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -139,7 +152,7 @@ func (a *Agent) pairDevice(server, username, name string, autostart bool) error 
 	if autostart {
 		setAutostart(true)
 	}
-	a.setConfig(&Config{Server: server, Username: strings.ToLower(username), ID: res.ID, Secret: res.Secret, Name: host, Code: res.Code})
+	a.setConfig(&Config{Server: server, ID: res.ID, Secret: res.Secret, Name: host, Code: res.Code})
 	return nil
 }
 
@@ -168,7 +181,7 @@ const setupHTML = `<!doctype html>
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px;width:100%;max-width:440px;box-shadow:0 8px 30px #0001}
 h1{font-size:20px;margin:0 0 4px}p{color:var(--mut);margin:0 0 18px}
 label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
-input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit}
+input[type=text],input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);font:inherit}
 input:focus{outline:2px solid var(--acc);border-color:transparent}
 button{margin-top:18px;width:100%;padding:11px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);margin-top:10px}
@@ -180,10 +193,11 @@ button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);
 .hide{display:none}
 </style></head><body><div class="card">
 <div id="setup" class="hide">
- <h1>remoteMe einrichten</h1><p>Dieser Computer soll von der Ferne aus erreichbar sein. Gib den Benutzer ein, der Zugriff bekommen soll.</p>
+ <h1>remoteMe einrichten</h1><p>Dieser Computer soll von der Ferne aus erreichbar sein. Lege ein Zugriffspasswort fest: Wer ihn übernehmen will, braucht dieses Passwort und den Code.</p>
  <label>Server</label><input type="text" id="server" placeholder="https://remoteme.example.com">
- <label>Benutzer, der zugreifen darf</label><input type="text" id="user" autocomplete="off" placeholder="Benutzername">
  <label>Name dieses Computers</label><input type="text" id="name">
+ <label>Zugriffspasswort (mindestens 6 Zeichen)</label><input type="password" id="pw" autocomplete="new-password">
+ <label>Passwort wiederholen</label><input type="password" id="pw2" autocomplete="new-password">
  <div class="chk"><input type="checkbox" id="auto" checked><label for="auto" style="margin:0;font-weight:400">Beim Anmelden automatisch starten</label></div>
  <div class="err" id="err"></div>
  <button id="go">Verbinden</button>
@@ -191,7 +205,7 @@ button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);
 <div id="status" class="hide">
  <h1>remoteMe</h1>
  <div class="st"><span class="dot" id="dot"></span><b id="stText"></b></div>
- <div id="pend" class="hide"><p>Gib diesen Code in der Weboberfläche beim neuen Gerät ein, um den Zugriff freizugeben:</p><div class="code" id="code"></div></div>
+ <div id="pend" class="hide"><p>Zum Übernehmen in der App oder Weboberfläche diesen Code und das Zugriffspasswort eingeben:</p><div class="code" id="code"></div></div>
  <p id="info"></p><div class="err" id="serr"></div>
  <div class="chk"><input type="checkbox" id="auto2"><label for="auto2" style="margin:0;font-weight:400">Beim Anmelden automatisch starten</label></div>
  <button class="sec" id="un">Zugriff widerrufen und Kopplung lösen</button>
@@ -209,15 +223,16 @@ async function refresh(){
   if(s.error)$('err').textContent=s.error;
   return}
  first=false;
- const txt={connecting:'Verbinde mit Server ...',pending:'Wartet auf Freigabe',online:'Verbunden - Zugriff möglich',error:'Keine Verbindung'}[s.status]||s.status;
+ const txt={connecting:'Verbinde mit Server ...',pending:'Verfügbar - wartet auf Übernahme',online:'Verbunden - Zugriff möglich',error:'Keine Verbindung'}[s.status]||s.status;
  $('stText').textContent=txt;$('dot').className='dot '+s.status;
  $('pend').classList.toggle('hide',!(s.code&&s.status!=='online'));$('code').textContent=s.code||'';
- $('info').textContent='Benutzer: '+s.username+' - Server: '+s.server;
+ $('info').textContent=(s.username?'Zugeordnet zu: '+s.username+' - ':'')+'Server: '+s.server;
  $('serr').textContent=s.status==='error'?s.error:'';
  $('auto2').checked=s.autostart;
 }
 $('go').onclick=async()=>{$('err').textContent='';
- try{await api('/pair','POST',{server:$('server').value,username:$('user').value,name:$('name').value,autostart:$('auto').checked});refresh()}
+ if($('pw').value!==$('pw2').value){$('err').textContent='Die Passwörter stimmen nicht überein';return}
+ try{await api('/pair','POST',{server:$('server').value,name:$('name').value,password:$('pw').value,autostart:$('auto').checked});$('pw').value=$('pw2').value='';refresh()}
  catch(e){$('err').textContent=e.message}};
 $('un').onclick=async()=>{if(confirm('Kopplung wirklich lösen? Danach ist kein Fernzugriff mehr möglich.')){await api('/unpair','POST');first=true;refresh()}};
 $('auto2').onchange=()=>api('/autostart','POST',{on:$('auto2').checked}).catch(e=>alert(e.message));

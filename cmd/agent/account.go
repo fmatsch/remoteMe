@@ -149,6 +149,9 @@ type remoteDevice struct {
 	Approved bool   `json:"approved"`
 	Online   bool   `json:"online"`
 	Busy     bool   `json:"busy"`
+
+	Claimable     bool `json:"claimable"`
+	NeedsPassword bool `json:"needsPassword"`
 }
 
 func (c *account) devices() ([]remoteDevice, error) {
@@ -157,8 +160,8 @@ func (c *account) devices() ([]remoteDevice, error) {
 	return l, err
 }
 
-func (c *account) approve(id, code string) error {
-	return c.api("POST", "/api/devices/"+url.PathEscape(id)+"/approve", map[string]string{"code": strings.TrimSpace(code)}, nil)
+func (c *account) approve(id, code, password string) error {
+	return c.api("POST", "/api/devices/"+url.PathEscape(id)+"/approve", map[string]string{"code": strings.TrimSpace(code), "password": password}, nil)
 }
 
 func (c *account) remove(id string) error {

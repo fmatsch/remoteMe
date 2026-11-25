@@ -107,7 +107,7 @@ func (s *Server) housekeeping(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			for _, id := range s.st.ExpirePending() {
+			for _, id := range s.st.ExpirePending(func(id string) bool { return s.agent(id) != nil }) {
 				if ac := s.agent(id); ac != nil {
 					ac.close()
 				}
@@ -247,12 +247,19 @@ func (s *Server) hDevices(w http.ResponseWriter, r *http.Request, user string) {
 		Online   bool      `json:"online"`
 		Busy     bool      `json:"busy"`
 		LastSeen time.Time `json:"lastSeen"`
+		// Claimable: verfügbarer Rechner ohne Besitzer; NeedsPassword: Übernahme verlangt das Zugriffspasswort.
+		Claimable     bool `json:"claimable"`
+		NeedsPassword bool `json:"needsPassword"`
 	}
 	out := []dev{}
-	for _, d := range s.st.DevicesOf(user) {
-		x := dev{ID: d.ID, Name: d.Name, OS: d.OS, Approved: d.Approved, LastSeen: d.LastSeen}
+	for _, d := range s.st.DevicesFor(user) {
+		x := dev{ID: d.ID, Name: d.Name, OS: d.OS, Approved: d.Approved, LastSeen: d.LastSeen,
+			Claimable: d.Owner == "", NeedsPassword: d.PassHash != ""}
 		if ac := s.agent(d.ID); ac != nil {
 			x.Online, x.Busy = true, ac.hasViewer()
+		}
+		if x.Claimable && !x.Online {
+			continue // nur tatsächlich verfügbare Rechner anzeigen
 		}
 		out = append(out, x)
 	}
@@ -261,16 +268,25 @@ func (s *Server) hDevices(w http.ResponseWriter, r *http.Request, user string) {
 
 func (s *Server) hApprove(w http.ResponseWriter, r *http.Request, user string) {
 	var b struct {
-		Code string `json:"code"`
+		Code     string `json:"code"`
+		Password string `json:"password"`
 	}
 	json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&b)
 	id := r.PathValue("id")
-	if err := s.st.Approve(user, id, b.Code); err != nil {
+	// Raten begrenzen: je Gerät und je Benutzer.
+	key, userKey := "approve:"+id, "approve-user:"+user
+	if !s.lim.allow(key, 5, 15*time.Minute) || !s.lim.allow(userKey, 20, 15*time.Minute) {
+		jerr(w, 429, "Zu viele Fehlversuche, bitte später erneut versuchen")
+		return
+	}
+	if err := s.st.Approve(user, id, b.Code, b.Password); err != nil {
 		jerr(w, 400, err.Error())
 		return
 	}
+	s.lim.reset(key)
+	s.lim.reset(userKey)
 	if ac := s.agent(id); ac != nil {
-		ac.sendJSON(map[string]any{"t": "approved"})
+		ac.sendJSON(map[string]any{"t": "approved", "owner": user})
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
@@ -288,7 +304,7 @@ func (s *Server) hDelete(w http.ResponseWriter, r *http.Request, user string) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-// Agent beantragt die Kopplung an einen Benutzer.
+// Agent meldet sich an: ohne Benutzernamen als verfügbarer Rechner (mit Zugriffspasswort).
 func (s *Server) hPair(w http.ResponseWriter, r *http.Request) {
 	if !s.lim.allow("pair:"+clientIP(r), 10, time.Hour) {
 		jerr(w, 429, "Zu viele Anfragen")
@@ -298,12 +314,13 @@ func (s *Server) hPair(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Name     string `json:"name"`
 		OS       string `json:"os"`
+		Password string `json:"password"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&b) != nil {
 		jerr(w, 400, "Ungültige Anfrage")
 		return
 	}
-	id, secret, code, err := s.st.NewPending(b.Username, b.Name, b.OS)
+	id, secret, code, err := s.st.NewPending(b.Username, b.Name, b.OS, b.Password)
 	if err != nil {
 		jerr(w, 400, err.Error())
 		return

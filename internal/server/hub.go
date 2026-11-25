@@ -184,7 +184,7 @@ func (s *Server) hAgentWS(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Agent online: %s (%s)", dev.Name, id)
 	ac.keepalive(ac.closed)
-	ac.sendJSON(map[string]any{"t": "welcome", "approved": dev.Approved})
+	ac.sendJSON(map[string]any{"t": "welcome", "approved": dev.Approved, "owner": dev.Owner})
 
 	for {
 		mt, data, err := ws.ReadMessage()

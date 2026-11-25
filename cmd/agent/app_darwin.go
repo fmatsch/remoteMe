@@ -34,7 +34,7 @@ func goAppStatus() *C.char {
 	text := map[string]string{
 		"unpaired":   "Nicht eingerichtet",
 		"connecting": "Verbindet …",
-		"pending":    "Wartet auf Freigabe",
+		"pending":    "Verfügbar – wartet auf Übernahme",
 		"online":     "Verbunden",
 		"error":      "Keine Verbindung",
 	}[st]
@@ -59,7 +59,7 @@ func goWinState() *C.char {
 	st, em, cfg := a.status, a.errMsg, a.cfg
 	a.mu.Unlock()
 	host, _ := os.Hostname()
-	out := map[string]any{"status": st, "error": em, "autostart": autostartEnabled(), "defaultServer": defaultServer, "hostname": host}
+	out := map[string]any{"status": st, "error": em, "autostart": autostartEnabled(), "defaultServer": defaultServer, "hostname": host, "role": loadRole()}
 	if cfg != nil {
 		out["server"], out["username"], out["name"] = cfg.Server, cfg.Username, cfg.Name
 		if !cfg.Approved {
@@ -73,11 +73,25 @@ func goWinState() *C.char {
 // goWinPair koppelt den Computer; Rückgabe NULL = Erfolg, sonst Fehlertext.
 //
 //export goWinPair
-func goWinPair(server, user, name *C.char, autostart C.int) *C.char {
-	if err := appAgent.pairDevice(C.GoString(server), C.GoString(user), C.GoString(name), autostart != 0); err != nil {
+func goWinPair(server, name, password *C.char, autostart C.int) *C.char {
+	if err := appAgent.pairDevice(C.GoString(server), C.GoString(name), C.GoString(password), autostart != 0); err != nil {
 		return C.CString(err.Error())
 	}
 	return nil
+}
+
+//export goWinRole
+func goWinRole() *C.char { return C.CString(loadRole()) }
+
+//export goWinSetRole
+func goWinSetRole(role *C.char) { saveRole(C.GoString(role)) }
+
+//export goWinPaired
+func goWinPaired() C.int {
+	if appAgent != nil && appAgent.config() != nil {
+		return 1
+	}
+	return 0
 }
 
 //export goWinUnpair
@@ -111,3 +125,5 @@ func runApp(ctx context.Context, cancel context.CancelFunc, a *Agent, showSetup 
 
 // nativeUI: Einrichtung über ein Cocoa-Fenster statt über den Browser.
 const nativeUI = true
+
+func showWindow() { C.fwShowWindow() }

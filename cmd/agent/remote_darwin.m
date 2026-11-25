@@ -8,7 +8,7 @@ extern char *goRemoteInfo(void);
 extern char *goRemoteLogin(const char *server, const char *user, const char *pw);
 extern void goRemoteLogout(void);
 extern char *goRemoteDevices(void);
-extern char *goRemoteApprove(const char *id, const char *code);
+extern char *goRemoteApprove(const char *id, const char *code, const char *password);
 extern char *goRemoteRemove(const char *id);
 extern char *goRemoteCookie(void);
 
@@ -91,7 +91,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	self.win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, RW, RH)
 		styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
 		backing:NSBackingStoreBuffered defer:NO];
-	self.win.title = @"remoteMe – Meine Computer";
+	self.win.title = @"remoteMe – Computer";
 	self.win.releasedWhenClosed = NO;
 	[self.win center];
 	NSView *root = self.win.contentView;
@@ -99,7 +99,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	// ---- Anmeldung ----
 	NSView *a = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, RW, RH)];
 	[a addSubview:lbl(@"Auf Computer zugreifen", NSMakeRect(28, RH - 62, RW - 56, 26), 20, YES)];
-	NSTextField *d = [NSTextField wrappingLabelWithString:@"Melde dich an deinem remoteMe-Server an. Danach siehst du alle freigegebenen Computer und verbindest dich ohne Code."];
+	NSTextField *d = [NSTextField wrappingLabelWithString:@"Melde dich an deinem remoteMe-Server an. Danach siehst du deine und alle verfügbaren Computer."];
 	d.frame = NSMakeRect(28, RH - 112, RW - 56, 44); d.font = [NSFont systemFontOfSize:12]; d.textColor = NSColor.secondaryLabelColor;
 	[a addSubview:d];
 	CGFloat y = RH - 142;
@@ -125,7 +125,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 
 	// ---- Liste ----
 	NSView *l = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, RW, RH)];
-	[l addSubview:lbl(@"Meine Computer", NSMakeRect(28, RH - 58, RW - 56, 26), 20, YES)];
+	[l addSubview:lbl(@"Computer", NSMakeRect(28, RH - 58, RW - 56, 26), 20, YES)];
 	NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(28, 100, RW - 56, RH - 170)];
 	sc.hasVerticalScroller = YES; sc.borderType = NSBezelBorder;
 	self.table = [[NSTableView alloc] initWithFrame:sc.bounds];
@@ -144,7 +144,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	self.connectBtn = [NSButton buttonWithTitle:@"Verbinden" target:self action:@selector(doConnect:)];
 	self.connectBtn.frame = NSMakeRect(RW - 28 - 110, 20, 110, 32); self.connectBtn.keyEquivalent = @"\r";
 	[l addSubview:self.connectBtn];
-	self.approveBtn = [NSButton buttonWithTitle:@"Freigeben …" target:self action:@selector(doApprove:)];
+	self.approveBtn = [NSButton buttonWithTitle:@"Übernehmen …" target:self action:@selector(doApprove:)];
 	self.approveBtn.frame = NSMakeRect(RW - 28 - 110 - 8 - 110, 20, 110, 32);
 	[l addSubview:self.approveBtn];
 	self.removeBtn = [NSButton buttonWithTitle:@"Entfernen" target:self action:@selector(doRemove:)];
@@ -239,9 +239,10 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 - (void)updateButtons {
 	NSDictionary *d = [self selected];
 	BOOL appr = [d[@"approved"] boolValue];
+	self.removeBtn.title = @"Entfernen";
 	self.connectBtn.enabled = d && appr && [d[@"online"] boolValue];
 	self.approveBtn.enabled = d && !appr;
-	self.removeBtn.enabled = d != nil;
+	self.removeBtn.enabled = d != nil && ![d[@"claimable"] boolValue];
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)n { [self updateButtons]; }
@@ -253,7 +254,8 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	if ([k isEqualToString:@"os"]) return d[@"os"];
 	BOOL appr = [d[@"approved"] boolValue], on = [d[@"online"] boolValue], busy = [d[@"busy"] boolValue];
 	NSString *txt; NSColor *col;
-	if (!appr) { txt = @"Wartet auf Freigabe"; col = NSColor.systemOrangeColor; }
+	if ([d[@"claimable"] boolValue]) { txt = @"Verfügbar"; col = NSColor.systemBlueColor; }
+	else if (!appr) { txt = @"Wartet auf Freigabe"; col = NSColor.systemOrangeColor; }
 	else if (!on) { txt = @"Offline"; col = NSColor.systemGrayColor; }
 	else if (busy) { txt = @"Online (in Benutzung)"; col = NSColor.systemGreenColor; }
 	else { txt = @"Online"; col = NSColor.systemGreenColor; }
@@ -265,20 +267,27 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 - (void)doApprove:(id)s {
 	NSDictionary *d = [self selected];
 	if (!d) return;
+	BOOL needsPw = [d[@"needsPassword"] boolValue];
 	NSAlert *a = [[NSAlert alloc] init];
-	a.messageText = [NSString stringWithFormat:@"„%@“ freigeben", d[@"name"]];
-	a.informativeText = @"Gib den 6-stelligen Code ein, der in der remoteMe-App auf diesem Computer angezeigt wird.";
-	NSTextField *f = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-	f.placeholderString = @"123456";
-	a.accessoryView = f;
-	[a addButtonWithTitle:@"Freigeben"]; [a addButtonWithTitle:@"Abbrechen"];
+	a.messageText = [NSString stringWithFormat:@"„%@“ übernehmen", d[@"name"]];
+	a.informativeText = needsPw ? @"Gib den 6-stelligen Code ein, den remoteMe auf diesem Computer anzeigt, und das dort festgelegte Zugriffspasswort."
+		: @"Gib den 6-stelligen Code ein, den remoteMe auf diesem Computer anzeigt.";
+	NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 240, needsPw ? 58 : 24)];
+	NSTextField *f = [[NSTextField alloc] initWithFrame:NSMakeRect(0, needsPw ? 34 : 0, 240, 24)];
+	f.placeholderString = @"Code (6 Ziffern)";
+	NSSecureTextField *pw = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 240, 24)];
+	pw.placeholderString = @"Zugriffspasswort";
+	[box addSubview:f];
+	if (needsPw) { [box addSubview:pw]; f.nextKeyView = pw; pw.nextKeyView = f; }
+	a.accessoryView = box;
+	[a addButtonWithTitle:@"Übernehmen"]; [a addButtonWithTitle:@"Abbrechen"];
 	a.window.initialFirstResponder = f;
 	if ([a runModal] != NSAlertFirstButtonReturn) return;
-	NSString *id_ = d[@"id"], *code = f.stringValue;
+	NSString *id_ = d[@"id"], *code = f.stringValue, *pass = needsPw ? pw.stringValue : @"";
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-		NSString *err = strOf(goRemoteApprove(id_.UTF8String, code.UTF8String));
+		NSString *err = strOf(goRemoteApprove(id_.UTF8String, code.UTF8String, pass.UTF8String));
 		dispatch_async(dispatch_get_main_queue(), ^{
-			if (err) { NSAlert *e = [[NSAlert alloc] init]; e.messageText = @"Freigabe fehlgeschlagen"; e.informativeText = err; [e runModal]; }
+			if (err) { NSAlert *e = [[NSAlert alloc] init]; e.messageText = @"Übernahme fehlgeschlagen"; e.informativeText = err; [e runModal]; }
 			[self poll:nil];
 		});
 	});
@@ -302,7 +311,8 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 // Sitzung: eingebetteter Viewer mit der Anmeldung dieser App (kein Browser, keine Codeeingabe).
 - (void)doConnect:(id)s {
 	NSDictionary *d = [self selected];
-	if (!d || ![d[@"approved"] boolValue] || ![d[@"online"] boolValue]) return;
+	if (d && ![d[@"approved"] boolValue]) { [self doApprove:nil]; return; }
+	if (!d || ![d[@"online"] boolValue]) return;
 	NSDictionary *info = jsonOf(goRemoteInfo());
 	NSDictionary *ck = jsonOf(goRemoteCookie());
 	if (!ck[@"value"]) { self.listErr.stringValue = @"Sitzung abgelaufen – bitte neu anmelden."; return; }

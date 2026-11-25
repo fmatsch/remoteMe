@@ -126,7 +126,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	// ---- Liste ----
 	NSView *l = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, RW, RH)];
 	[l addSubview:lbl(@"Computer", NSMakeRect(28, RH - 58, RW - 56, 26), 20, YES)];
-	NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(28, 100, RW - 56, RH - 170)];
+	NSScrollView *sc = [[NSScrollView alloc] initWithFrame:NSMakeRect(28, 100, RW - 56, RH - 196)];
 	sc.hasVerticalScroller = YES; sc.borderType = NSBezelBorder;
 	self.table = [[NSTableView alloc] initWithFrame:sc.bounds];
 	for (NSArray *c in @[@[@"name", @"Computer", @210], @[@"os", @"System", @90], @[@"st", @"Status", @160]]) {
@@ -153,7 +153,8 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	NSButton *out = [NSButton buttonWithTitle:@"Abmelden" target:self action:@selector(doLogout:)];
 	out.frame = NSMakeRect(28, 20, 100, 32);
 	[l addSubview:out];
-	self.whoLabel = lbl(@"", NSMakeRect(28, RH - 78, RW - 56, 16), 12, NO);
+	self.whoLabel = lbl(@"", NSMakeRect(28, RH - 84, RW - 56, 18), 12, NO);
+	self.whoLabel.lineBreakMode = NSLineBreakByTruncatingMiddle; // lange Server-Adressen kürzen
 	self.whoLabel.textColor = NSColor.secondaryLabelColor;
 	[l addSubview:self.whoLabel];
 	self.listView = l;
@@ -251,7 +252,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	NSDictionary *d = self.devs[r];
 	NSString *k = c.identifier;
 	if ([k isEqualToString:@"name"]) return d[@"name"];
-	if ([k isEqualToString:@"os"]) return d[@"os"];
+	if ([k isEqualToString:@"os"]) return @{@"darwin": @"macOS", @"windows": @"Windows", @"linux": @"Linux"}[d[@"os"]] ?: d[@"os"];
 	BOOL appr = [d[@"approved"] boolValue], on = [d[@"online"] boolValue], busy = [d[@"busy"] boolValue];
 	NSString *txt; NSColor *col;
 	if ([d[@"claimable"] boolValue]) { txt = @"Verfügbar"; col = NSColor.systemBlueColor; }

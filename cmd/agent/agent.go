@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const version = "1.2.0"
+const version = "1.2.1"
 
 // Msg ist die gemeinsame JSON-Nachricht zwischen Viewer, Relay und Agent.
 type Msg struct {

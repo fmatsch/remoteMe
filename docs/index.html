@@ -38,7 +38,7 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
   <h1>remote<span>Me</span></h1>
   <p class="lead">Selbst gehostete Fernwartung. Bildschirm sehen, Maus und Tastatur bedienen, Dateien per Drag &amp; Drop hin- und herschieben – im Browser oder mit der nativen Mac-App, für Windows, Linux und macOS. Flüssige Übertragung per H.264.</p>
   <div class="btns">
-    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/latest">macOS-App laden</a>
+    <a class="b p" href="https://github.com/fmatsch/remoteMe/releases/tag/v1.2.0">macOS-App laden</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe">Auf GitHub ansehen</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/README.md">Bedienung</a>
     <a class="b" href="https://github.com/fmatsch/remoteMe/blob/main/DEVELOPMENT.md">Entwicklerdoku</a>
@@ -49,11 +49,11 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 <div class="grid">
   <div class="c"><b>Fühlt sich an wie davor sitzen</b><p>Live-Bild des Zielrechners, Maus, Tastatur, Mausrad, Vollbild, mehrere Monitore.</p></div>
   <div class="c"><b>Flüssig dank H.264</b><p>Hardware-Videokodierung (auf dem Mac ScreenCaptureKit + VideoToolbox, sonst ffmpeg), 30 Bilder/s, Flusssteuerung und adaptive Bitrate. Ohne WebCodecs oder ffmpeg weicht es automatisch auf JPEG aus.</p></div>
-  <div class="c"><b>Native Mac-App</b><p>Menüleistensymbol, eigenes Einrichtungsfenster und „Meine Computer“: mehrere Rechner freigeben, in einer Liste auswählen und per Doppelklick ohne Code verbinden – ohne Browser.</p></div>
+  <div class="c"><b>Native Mac-App</b><p>Menüleistensymbol und eigene Fenster, ohne Browser. Wahlweise nur als Ziel oder als Vollversion: alle verfügbaren Rechner in einer Liste sehen, übernehmen und per Doppelklick verbinden.</p></div>
   <div class="c"><b>Drag &amp; Drop für Dateien</b><p>Dateien aufs Fenster ziehen zum Hochladen; aus dem Dateipanel auf den eigenen Desktop ziehen zum Herunterladen. Ordner als ZIP.</p></div>
   <div class="c"><b>Zwischenablage</b><p>Text wird in beide Richtungen übertragen, auch Strg+V.</p></div>
   <div class="c"><b>Keine Portfreigaben</b><p>Agent und Browser verbinden sich ausgehend zu deinem Server – funktioniert hinter jeder Firewall.</p></div>
-  <div class="c"><b>Sichere Kopplung</b><p>Benutzer anlegen, Agent installieren, Benutzernamen eingeben, Code bestätigen. Erst dann ist der Rechner erreichbar.</p></div>
+  <div class="c"><b>Sichere Kopplung</b><p>Ein Rechner wird erst erreichbar, wenn ihn ein angemeldeter Benutzer mit dem dort angezeigten Code und dem dort festgelegten Zugriffspasswort übernimmt.</p></div>
   <div class="c"><b>Windows · Linux · macOS</b><p>Ein Go-Projekt, ein Agent je Betriebssystem, Server als einzelne Datei.</p></div>
 </div>
 
@@ -61,12 +61,12 @@ footer{padding:48px 0;color:var(--mut);font-size:14px}
 <div class="diag">Viewer (Browser oder Mac-App)  &lt;──HTTPS/WSS──&gt;  Relay-Server  &lt;──WSS──  Agent (Zielrechner)</div>
 <ol>
   <li><b>Benutzer anlegen:</b> Server im Browser öffnen und registrieren.</li>
-  <li><b>Agent installieren:</b> am Zielrechner starten, Server und den Benutzer eingeben, der zugreifen darf. Der Agent zeigt einen 6-stelligen Code.</li>
-  <li><b>Freigeben:</b> Code im Browser oder in der Mac-App („Meine Computer“) beim neuen Gerät eingeben – fertig. Ab jetzt reicht ein Doppelklick auf den Computer.</li>
+  <li><b>Zielrechner einrichten:</b> remoteMe starten, Server eingeben und ein Zugriffspasswort festlegen. Angezeigt wird ein 6-stelliger Code.</li>
+  <li><b>Übernehmen:</b> Der Rechner erscheint in der Mac-App oder Weboberfläche als „verfügbar“. Code und Zugriffspasswort eingeben – fertig. Ab jetzt reicht ein Doppelklick.</li>
 </ol>
 
 <h2>macOS-App</h2>
-<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/latest" style="color:var(--acc)">DMG</a> laden (macOS 13+, Apple Silicon und Intel), <code>remoteMe</code> in „Programme“ ziehen und starten. Die Test-Version ist nicht notarisiert: beim ersten Öffnen Rechtsklick → Öffnen. Unter <i>Datenschutz &amp; Sicherheit</i> <b>Bildschirmaufnahme</b> und <b>Bedienungshilfen</b> erlauben und die App neu starten.</p>
+<p>Die <a href="https://github.com/fmatsch/remoteMe/releases/tag/v1.2.0" style="color:var(--acc)">DMG</a> laden (macOS 13+, Apple Silicon und Intel), <code>remoteMe</code> in „Programme“ ziehen und starten. Die Test-Version ist nicht notarisiert: macOS blockiert den ersten Start. Danach unter <i>Systemeinstellungen → Datenschutz &amp; Sicherheit</i> auf <b>Dennoch öffnen</b> klicken (bis macOS 14: Rechtsklick → Öffnen). Beim ersten Start wählst du „Nur als Ziel“ oder „Vollversion“. Als Ziel braucht die App unter <i>Datenschutz &amp; Sicherheit</i> <b>Bildschirmaufnahme</b> und <b>Bedienungshilfen</b>; danach neu starten.</p>
 
 <h2>Schnellstart</h2>
 <pre><code>git clone https://github.com/fmatsch/remoteMe.git
@@ -80,7 +80,9 @@ go run ./cmd/agent -server http://127.0.0.1:8080</code></pre>
 <table>
   <tr><th>Bereich</th><th>Status</th></tr>
   <tr><td>Server, Kopplung, Weboberfläche</td><td>getestet (Windows, Linux-Server im Testbetrieb)</td></tr>
-  <tr><td>Agent macOS: Bild (H.264), Maus, Tastatur, native App</td><td>getestet (Bild, Maus, Taste); Fernzugriff aus der App folgt im Praxistest</td></tr>
+  <tr><td>Agent macOS: Bild (H.264), Maus, Tastatur</td><td>getestet</td></tr>
+  <tr><td>Übernahme mit Code und Zugriffspasswort</td><td>getestet (Server und Weboberfläche)</td></tr>
+  <tr><td>Fernzugriff aus der nativen Mac-App</td><td>im Praxistest</td></tr>
   <tr><td>Agent Windows: Bild, Maus, Dateien</td><td>getestet (v1.0); H.264 über ffmpeg noch ungeprüft</td></tr>
   <tr><td>Agent Linux (X11)</td><td>kompiliert, noch nicht auf Gerät geprüft</td></tr>
 </table>

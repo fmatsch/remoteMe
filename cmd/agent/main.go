@@ -21,9 +21,15 @@ const uiPort = 17321
 func main() {
 	background := flag.Bool("background", false, "ohne Browserfenster starten (Autostart)")
 	server := flag.String("server", "", "Server-Adresse vorbelegen")
+	platform := platformFlags()
 	flag.Parse()
 	if *server != "" {
 		defaultServer = *server
+	}
+
+	// Dienst-Befehle (Windows) bestimmen auch, wo Konfiguration und Protokoll liegen.
+	if platform() {
+		return
 	}
 
 	if lf, err := os.OpenFile(filepath.Join(configDir(), "agent.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
@@ -31,6 +37,15 @@ func main() {
 			lf.Truncate(0)
 		}
 		log.SetOutput(lf)
+	}
+
+	// Helfer des Windows-Dienstes: nur der Agent, keine Einrichtungsseite (kein Browser mit Systemrechten).
+	if machineMode {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		log.Printf("Agent %s gestartet (Dienst)", version)
+		newAgent().run(ctx)
+		return
 	}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", uiPort))

@@ -37,6 +37,7 @@ type videoParams struct {
 	FPS        int
 	Bitrate    int
 	Sink       func(au []byte, key bool)
+	CapError   func(string) // Aufnahmeproblem melden ("" = behoben)
 }
 
 // videoPipe ist ein laufender Encoder (nativ oder ffmpeg).
@@ -99,6 +100,7 @@ func (a *Agent) captureLoop(ctx context.Context) {
 }
 
 func (a *Agent) displayBounds() (int, image.Rectangle, bool) {
+	useInputDesktop()
 	n := screenshot.NumActiveDisplays()
 	if n == 0 {
 		return 0, image.Rectangle{}, false
@@ -114,6 +116,7 @@ func (a *Agent) displayBounds() (int, image.Rectangle, bool) {
 func (a *Agent) videoLoop(ctx context.Context) error {
 	idx, b, ok := a.displayBounds()
 	if !ok {
+		a.setCapError("kein Bildschirm gemeldet")
 		time.Sleep(500 * time.Millisecond)
 		return nil
 	}
@@ -150,7 +153,7 @@ func (a *Agent) videoLoop(ctx context.Context) error {
 		}
 	}
 
-	p := videoParams{Display: idx, Bounds: b, FPS: videoFPS, Bitrate: curBps, Sink: sink}
+	p := videoParams{Display: idx, Bounds: b, FPS: videoFPS, Bitrate: curBps, Sink: sink, CapError: a.setCapError}
 	var err error
 	pipe, err = openVideo(ctx, &p)
 	if err != nil {

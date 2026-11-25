@@ -41,7 +41,12 @@ func userDir(names ...string) string {
 	return h
 }
 
-func desktopDir() string { return userDir("Desktop", "Schreibtisch") }
+func desktopDir() string {
+	if machineMode { // Dienst: gemeinsamer Desktop, den jeder angemeldete Benutzer sieht
+		return publicDesktop()
+	}
+	return userDir("Desktop", "Schreibtisch")
+}
 
 type entry struct {
 	N string `json:"n"`
@@ -60,6 +65,9 @@ func listDir(p string) map[string]any {
 			{N: "Downloads", P: userDir("Downloads"), D: true},
 			{N: "Dokumente", P: userDir("Documents", "Dokumente"), D: true},
 			{N: "Benutzerordner", P: homeDir(), D: true},
+		}
+		if machineMode {
+			roots = machineRoots()
 		}
 		if runtime.GOOS == "windows" {
 			roots = append(roots, probeDrives()...)

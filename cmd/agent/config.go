@@ -18,6 +18,9 @@ type Config struct {
 }
 
 func configDir() string {
+	if machineMode { // Windows-Dienst: maschinenweit, nur für System und Administratoren (siehe service_windows.go)
+		return machineConfigDir()
+	}
 	d, err := os.UserConfigDir()
 	if err != nil {
 		d = "."

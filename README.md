@@ -45,6 +45,8 @@ deploy/user.sh --delete NAME    # Benutzer samt seinen Computern löschen
 ## Agent
 
 * **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).
+* **Windows, auch gesperrt oder abgemeldet:** nach dem Verbinden auf der Einrichtungsseite **„Als Dienst installieren“** (Administratorrechte). Der Dienst läuft mit Systemrechten und erlaubt Zugriff auf Sperr- und Anmeldebildschirm; in der Sitzung gibt es dafür den Knopf **Strg+Alt+Entf**. Aktualisieren oder entfernen: die (neue) `remoteMe.exe` starten und die Frage beantworten. Wer sich an deinem remoteMe-Konto anmelden kann, hat auf solchen Rechnern volle Rechte – zweiten Faktor einschalten.
+* **ffmpeg** liegt dem Windows-Download bei (GPL, siehe `ffmpeg-LICENSE.txt`) und sorgt für H.264, auch ohne Grafikkarte.
 * **Linux:** `remoteme-agent-linux-amd64`. Benötigt eine **X11**-Sitzung (Wayland wird nicht unterstützt) und für die Zwischenablage `xclip` oder `xsel`.
 * **macOS (13+):** `./build-macos.sh --dmg` baut `remoteMe.app` (Menüleistensymbol, Apple Silicon + Intel). Beim ersten Start fragt macOS nach **Bildschirmaufnahme** und **Bedienungshilfen** (*Systemeinstellungen → Datenschutz & Sicherheit*); danach die App einmal neu starten. Die Einrichtung erfolgt in einem **nativen Fenster** (kein Browser nötig); es öffnet sich beim ersten Start und danach über das Menüleistensymbol → „Einstellungen …“.
 
@@ -70,7 +72,7 @@ Logs: `agent.log` im Konfigurationsordner (`%APPDATA%\remoteMe`, `~/.config/remo
 ## Bekannte Grenzen
 
 * **Bildübertragung:** H.264 mit Flusssteuerung und adaptiver Bitrate (30 Bilder/s). Auf dem Mac nativ (ScreenCaptureKit + VideoToolbox, keine Zusatzsoftware); unter Windows/Linux über **ffmpeg** (im PATH oder neben dem Agent; Hardware-Encoder nvenc/QSV/AMF werden automatisch genutzt, sonst libx264). Der Browser dekodiert per WebCodecs (Chrome/Edge/Safari/Firefox aktuell; nur über **https** oder localhost). Ohne ffmpeg oder ohne WebCodecs greift automatisch der JPEG-Modus (nur geänderte Bildbereiche).
-* Der Agent läuft in der Benutzersitzung: Sperrbildschirm, Anmeldebildschirm und UAC-Dialoge sind nicht sichtbar bzw. bedienbar. Dafür wäre ein Windows-Dienst nötig.
+* Sperr- und Anmeldebildschirm (und UAC-Dialoge) gehen nur unter Windows mit installiertem Dienst. Auf dem Mac und unter Linux muss der Rechner angemeldet und entsperrt sein.
 * Der Mauszeiger ist der lokale Zeiger (keine Anzeige der Zeigerform des Zielrechners).
 * Windows und Dateiübertragung sind getestet; **Linux- und macOS-Eingabe (Maus/Tastatur) sind implementiert, aber noch nicht auf echten Geräten geprüft.**
 

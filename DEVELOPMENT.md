@@ -51,6 +51,14 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 
 `deploy/deploy.sh` baut den Linux-Server, lädt ihn per SSH (`~/.ssh/praxiskalender_ed25519`, `root@138.201.56.28`) hoch und installiert ihn: Dienst `remoteme.service` (Benutzer `remoteme`, Port 4740 auf 127.0.0.1, Daten `/srv/remoteme/data.json`, Programm `/opt/remoteme/`), Caddy-Datei `/etc/caddy/remoteme.caddy` für **https://remote.depes.ch** (eigener Ursprung – nicht unter einem Pfad neben anderen Anwendungen betreiben, sonst teilen sie Cookies und Rechte). Vor jeder Änderung wird `/etc/caddy` nach `/root/remoteme-caddy-<zeit>` gesichert; ungültige Konfiguration wird zurückgesetzt. Unter `www.depes.ch/remote/ws/agent` verbinden sich weiterhin früher gekoppelte Zielrechner (Rest des alten Pfads leitet um).
 
+## 1c. Windows-Dienst (`cmd/agent/service_windows.go`)
+
+`remoteMe.exe -install -from <agent.json> [-quiet]` kopiert Programm und ffmpeg nach `%ProgramFiles%\remoteMe`, die Kopplung nach `%ProgramData%\remoteMe` (DACL nur SYSTEM und Administratoren), setzt `SoftwareSASGeneration=1` und legt den Dienst an. Der Dienst (`-service`) startet in der aktiven Sitzung (aktive RDP-/Konsolensitzung, sonst Konsole) einen Helfer (`-helper`) mit SYSTEM-Token; ein Job-Objekt beendet ihn samt ffmpeg. Der Helfer ruft vor jeder Aufnahme/Eingabe `useInputDesktop()` (OpenInputDesktop/SetThreadDesktop), hat keine Einrichtungsseite und startet nichts aus dem Suchpfad. Strg+Alt+Entf: Viewer `{t:"sas"}` → Ereignis `Global\remoteMeSAS` → Dienst ruft `SendSAS`. Der Viewer zeigt den Knopf, wenn `screen.sas` gesetzt ist. `-uninstall` entfernt Dienst und Kopplung.
+
+**Test:** `.github/workflows/windows-service.yml` (Push auf Branch `windows-test` oder manuell) installiert den Dienst auf einem GitHub-Windows-Runner, verbindet `test/e2e`, löst Strg+Alt+Entf aus, sperrt den Rechner und tippt ins Passwortfeld; die Bilder liegen im Artefakt `ergebnis`.
+
+Meldet der Agent kein Bild, schickt er `{t:"nocap", msg}` (`nocap.go`).
+
 ## 2. Architektur
 
 ```
@@ -161,7 +169,7 @@ Der Viewer schickt `code` (physische Taste) und `key` (Zeichen). Der Agent tippt
 1. **macOS-Eingabe prüfen** (Maus/Tastatur über `CGEventPost`; Koordinaten sind Punkte wie in `screen.w/h`). Mauszeiger des Zielrechners einblenden/übertragen.
 2. **Video weiter ausbauen:** ✅ H.264 (macOS nativ, sonst ffmpeg), Flusssteuerung und adaptive Bitrate sind umgesetzt. Offen: Windows-Hardware-Encoder ohne ffmpeg (Media Foundation), ffmpeg mit der Windows-/Linux-App ausliefern (Lizenz beachten: libx264 ist GPL) oder go-openh264 (purego) einbinden, Bildschirmaufnahme unter Windows schneller (DXGI Desktop Duplication statt GDI), AV1/VP9, Audio. Der JPEG-Modus bleibt Fallback (http ohne WebCodecs, kein Encoder).
 3. **Zustimmung pro Sitzung** am Zielrechner (Dialog „X möchte zugreifen") als Option, sichtbarer Hinweis „Sitzung aktiv".
-4. **Windows-Dienst** für Zugriff auf Sperr-/Anmeldebildschirm und UAC (Dienst + Helferprozess in der Benutzersitzung).
+4. ✅ Windows-Dienst für Sperr-/Anmeldebildschirm (§1c). Offen: Gegenstück für macOS (LaunchDaemon, LoginWindow-Sitzung, signierte App).
 5. **Zeigerform des Zielrechners** übertragen (aktuell lokaler Zeiger im Viewer).
 6. **Linux/Wayland** (PipeWire-Portal) – aktuell nur X11.
 7. Persistente Sitzungen im Server, Mehrbenutzer-Rollen, Gerät umbenennen, Audit-Log, optionale Ende-zu-Ende-Verschlüsselung.

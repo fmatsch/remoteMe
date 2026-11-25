@@ -69,7 +69,7 @@ func (a *Agent) screenInfo(idx int, extra map[string]any) {
 		ds = append(ds, map[string]int{"w": b.Dx(), "h": b.Dy()})
 	}
 	b := screenshot.GetDisplayBounds(idx)
-	m := map[string]any{"t": "screen", "w": b.Dx(), "h": b.Dy(), "i": idx, "displays": ds, "codec": "jpeg", "e": a.fl.epoch.Load()}
+	m := map[string]any{"t": "screen", "w": b.Dx(), "h": b.Dy(), "i": idx, "displays": ds, "codec": "jpeg", "e": a.fl.epoch.Load(), "sas": machineMode}
 	for k, v := range extra {
 		m[k] = v
 	}
@@ -90,8 +90,10 @@ func (a *Agent) jpegLoop(ctx context.Context, stop func() bool) {
 			time.Sleep(5 * time.Millisecond)
 			continue
 		}
+		useInputDesktop()
 		n := screenshot.NumActiveDisplays()
 		if n == 0 {
+			a.setCapError("kein Bildschirm gemeldet")
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
@@ -114,10 +116,15 @@ func (a *Agent) jpegLoop(ctx context.Context, stop func() bool) {
 			if failed++; failed == 1 || failed%50 == 0 {
 				log.Println("Bildschirmaufnahme fehlgeschlagen:", err)
 			}
+			if failed > 5 {
+				a.setCapError("Aufnahme fehlgeschlagen: " + err.Error())
+				prev = nil // nach der Störung wieder ein vollständiges Bild senden
+			}
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
 		failed = 0
+		a.setCapError("")
 
 		r := img.Rect
 		if prev != nil && prev.Rect == img.Rect {

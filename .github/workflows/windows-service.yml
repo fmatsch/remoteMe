@@ -1,0 +1,77 @@
+name: windows-service
+on:
+  push:
+    branches: [windows-test]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  service:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - name: Bauen
+        run: |
+          go build -o dist/server.exe ./cmd/server
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/app/remoteMe.exe ./cmd/agent
+          go build -o dist/e2e.exe ./test/e2e
+      - name: ffmpeg beilegen
+        shell: pwsh
+        run: |
+          $u = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          Invoke-WebRequest $u -OutFile ff.zip
+          $want = (Invoke-WebRequest "$u.sha256").Content
+          if ($want -is [byte[]]) { $want = [Text.Encoding]::ASCII.GetString($want) }
+          if ((Get-FileHash ff.zip -Algorithm SHA256).Hash -ne $want.Trim()) { throw "Prüfsumme falsch" }
+          Expand-Archive ff.zip ff
+          Copy-Item (Get-ChildItem ff -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName dist/app/
+      - name: Testserver, Dienst installieren, Bild empfangen
+        shell: pwsh
+        run: |
+          Start-Process dist/server.exe -ArgumentList "-addr","127.0.0.1:8099","-data","$PWD/dist/data.json" -RedirectStandardError dist/server.log
+          Start-Sleep 2
+          $pw = [guid]::NewGuid().ToString()
+          "E2E_PW=$pw" | Out-File $env:GITHUB_ENV -Append
+          Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/register -Headers @{"X-FW"="1"} -Body (@{username="citest";password=$pw}|ConvertTo-Json) -ContentType application/json
+          $p = Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/agent/pair -Body (@{name="runner";os="windows";password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json
+          "E2E_DEV=$($p.id)" | Out-File $env:GITHUB_ENV -Append
+          "E2E_CODE=$($p.code)" | Out-File $env:GITHUB_ENV -Append
+          @{server="http://127.0.0.1:8099";id=$p.id;secret=$p.secret;name="runner";code=$p.code} | ConvertTo-Json | Set-Content -Encoding ascii dist/agent.json
+          $r = Start-Process dist/app/remoteMe.exe -ArgumentList "-install","-from","`"$PWD\dist\agent.json`"","-quiet" -Wait -PassThru
+          if ($r.ExitCode -ne 0) { throw "Installation fehlgeschlagen ($($r.ExitCode))" }
+          Start-Sleep 5
+          Get-Service remoteMe | Format-List Name,Status,StartType
+          icacls "$env:ProgramData\remoteMe"
+          Get-ChildItem "$env:ProgramFiles\remoteMe"
+          Get-CimInstance Win32_Process -Filter "Name='remoteMe.exe'" | Select-Object ProcessId,SessionId,CommandLine | Format-Table -AutoSize
+          query session
+          $global:LASTEXITCODE = 0
+          # --- Übernehmen und Bild empfangen (gleicher Schritt: der Testserver lebt nur so lange) ---
+          $s = $null
+          $b = @{username="citest";password=$pw}|ConvertTo-Json
+          Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/login -Headers @{"X-FW"="1"} -Body $b -ContentType application/json -SessionVariable s
+          Invoke-RestMethod -Method Post "http://127.0.0.1:8099/api/devices/$($p.id)/approve" -Headers @{"X-FW"="1"} -WebSession $s -Body (@{code=$p.code;password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json
+          Start-Sleep 2
+          dist/e2e.exe -password $pw -device $p.id -out out
+      - name: Protokolle
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          foreach ($f in "$env:ProgramData\remoteMe\service.log","$env:ProgramData\remoteMe\agent.log","dist\server.log") {
+            "===== $f"; if (Test-Path $f) { Get-Content $f -Tail 60; Copy-Item $f out/ }
+          }
+      - name: Deinstallieren
+        if: always()
+        shell: pwsh
+        run: |
+          Start-Process dist/app/remoteMe.exe -ArgumentList "-uninstall","-quiet" -Wait
+          Start-Sleep 3
+          if (Get-Service remoteMe -ErrorAction SilentlyContinue) { throw "Dienst noch vorhanden" } else { "Dienst entfernt" }
+          if (Get-Process remoteMe -ErrorAction SilentlyContinue) { throw "Prozess läuft noch" } else { "kein Prozess mehr" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ergebnis, path: out }

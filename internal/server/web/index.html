@@ -67,6 +67,7 @@ h2{font-size:16px;margin:0}
 .x{padding:6px 10px}.x .bar2{height:4px;background:#263041;border-radius:2px;margin-top:3px}.x .bar2 i{display:block;height:100%;background:var(--acc);border-radius:2px;width:0}
 .x.fail{color:#f87171}
 #drop{position:absolute;inset:8px;border:3px dashed var(--acc);border-radius:14px;background:#2563eb26;display:flex;align-items:center;justify-content:center;font-size:20px;pointer-events:none;z-index:5;text-align:center}
+#ovlText{max-width:640px}
 #ovl{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#0b0f14d9;z-index:6;text-align:center;padding:20px}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#111827;color:#fff;border:1px solid #374151;padding:9px 16px;border-radius:10px;z-index:20;font-size:14px;max-width:90vw}
 @media(max-width:700px){#files{position:absolute;right:0;top:0;bottom:0;z-index:4;width:85%}}
@@ -114,6 +115,7 @@ h2{font-size:16px;margin:0}
     <button id="sFit" title="Ansicht umschalten">Einpassen</button>
     <select id="sQ" title="Bildqualität"><option value="40">Qualität: niedrig</option><option value="70" selected>Qualität: normal</option><option value="90">Qualität: hoch</option></select>
     <button id="sClip" title="Zwischenablage dieses Computers an den Zielrechner senden">Zwischenablage senden</button>
+    <button id="sSas" class="hide" title="Strg+Alt+Entf an den Zielrechner senden">Strg+Alt+Entf</button>
     <button id="sFull">Vollbild</button>
     <button id="sFiles" class="on">Dateien</button>
     <span class="sp"></span>
@@ -261,6 +263,7 @@ function onCtrl(m) {
       cx.fillStyle = '#000'; cx.fillRect(0, 0, canvas.width, canvas.height);
       closeDecoder(); epoch = m.e || 0; recv = 0; codecName = m.codec || 'jpeg'; vwait = true; queue = [];
       applyFit();
+      $('sSas').classList.toggle('hide', !m.sas);
       const sel = $('sDisp');
       if (Array.isArray(m.displays) && m.displays.length > 1) {
         sel.classList.remove('hide');
@@ -268,6 +271,8 @@ function onCtrl(m) {
         sel.value = num(m.i);
       } else sel.classList.add('hide');
       break;
+    case 'nocap': // Zielrechner kann gerade kein Bild liefern; verschwindet mit dem nächsten Bild
+      overlay(String(m.msg || 'Der Zielrechner liefert kein Bild.').slice(0, 600), false); break;
     case 'codec': // Agent kann kein H.264 und liefert JPEG
       wantH264 = false; codecName = m.c; toast('Videokompression am Zielrechner nicht verfügbar – JPEG-Modus'); break;
     case 'clip':
@@ -346,6 +351,7 @@ function applyFit() {
 }
 $('sFit').onclick = () => { fit = !fit; applyFit(); };
 $('sDisp').onchange = e => send({t: 'display', i: +e.target.value});
+$('sSas').onclick = () => { send({t: 'sas'}); canvas.focus(); };
 $('sQ').onchange = e => send({t: 'opt', q: +e.target.value, codec: wantH264 ? 'h264' : 'jpeg'});
 $('sFull').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();

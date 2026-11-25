@@ -65,6 +65,7 @@ func (u *ui) serve(ln net.Listener) {
 	mux.HandleFunc("POST /pair", u.guard(u.pair))
 	mux.HandleFunc("POST /unpair", u.guard(u.unpair))
 	mux.HandleFunc("POST /autostart", u.guard(u.autostart))
+	mux.HandleFunc("POST /service", u.guard(u.service))
 	http.Serve(ln, mux)
 }
 
@@ -111,6 +112,7 @@ func (u *ui) state(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"status": st, "error": em, "autostart": autostartEnabled(),
 		"defaultServer": defaultServer, "hostname": host, "os": runtime.GOOS, "version": version,
+		"canService": serviceSupported,
 	}
 	if cfg != nil {
 		out["server"], out["username"], out["name"] = cfg.Server, cfg.Username, cfg.Name
@@ -183,6 +185,19 @@ func (a *Agent) pairDevice(server, name, password string, autostart bool) error 
 	return nil
 }
 
+// service installiert den Windows-Dienst (UAC-Abfrage); die laufende Instanz wird dabei beendet.
+func (u *ui) service(w http.ResponseWriter, r *http.Request) {
+	if !serviceSupported {
+		jsonOut(w, 400, map[string]string{"error": "Nur unter Windows"})
+		return
+	}
+	if err := startServiceInstall(); err != nil {
+		jsonOut(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
 func (u *ui) unpair(w http.ResponseWriter, r *http.Request) {
 	u.a.setConfig(nil)
 	jsonOut(w, 200, map[string]bool{"ok": true})
@@ -235,6 +250,8 @@ button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);
  <div id="pend" class="hide"><p>Zum Übernehmen in der App oder Weboberfläche diesen Code und das Zugriffspasswort eingeben:</p><div class="code" id="code"></div></div>
  <p id="info"></p><div class="err" id="serr"></div>
  <div class="chk"><input type="checkbox" id="auto2"><label for="auto2" style="margin:0;font-weight:400">Beim Anmelden automatisch starten</label></div>
+ <div id="svcBox" class="hide"><button id="svc">Auch bei gesperrtem Rechner erreichbar (als Dienst installieren)</button>
+  <p style="margin:8px 0 0;font-size:13px">Braucht Administratorrechte. Der Dienst läuft mit Systemrechten und erlaubt den Fernzugriff auch am Sperr- und Anmeldebildschirm.</p></div>
  <button class="sec" id="un">Zugriff widerrufen und Kopplung lösen</button>
 </div></div>
 <script>
@@ -256,12 +273,14 @@ async function refresh(){
  $('info').textContent=(s.username?'Zugeordnet zu: '+s.username+' - ':'')+'Server: '+s.server;
  $('serr').textContent=s.status==='error'?s.error:'';
  $('auto2').checked=s.autostart;
+ $('svcBox').classList.toggle('hide',!s.canService);
 }
 $('go').onclick=async()=>{$('err').textContent='';
  if($('pw').value!==$('pw2').value){$('err').textContent='Die Passwörter stimmen nicht überein';return}
  try{await api('/pair','POST',{server:$('server').value,name:$('name').value,password:$('pw').value,autostart:$('auto').checked});$('pw').value=$('pw2').value='';refresh()}
  catch(e){$('err').textContent=e.message}};
 $('un').onclick=async()=>{if(confirm('Kopplung wirklich lösen? Danach ist kein Fernzugriff mehr möglich.')){await api('/unpair','POST');first=true;refresh()}};
+$('svc').onclick=async()=>{try{await api('/service','POST');alert('Bitte die Windows-Abfrage bestätigen. Nach der Installation kann dieses Fenster geschlossen werden.')}catch(e){alert(e.message)}};
 $('auto2').onchange=()=>api('/autostart','POST',{on:$('auto2').checked}).catch(e=>alert(e.message));
 refresh();setInterval(refresh,2000);
 </script></body></html>`

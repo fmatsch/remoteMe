@@ -33,6 +33,9 @@ func ffmpegPath() string {
 			}
 		}
 	}
+	if machineMode {
+		return "" // läuft mit Systemrechten: nie ein Programm aus dem Suchpfad starten
+	}
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
@@ -81,8 +84,11 @@ type ffmpegVideo struct {
 
 	alive   atomic.Bool
 	bps     atomic.Int64
+	started atomic.Int64 // Unix-Zeit des letzten Starts
 	restart atomic.Bool
 	wg      sync.WaitGroup
+
+	capError func(string)
 }
 
 func newFFmpegVideo(ctx context.Context, p *videoParams) (videoPipe, error) {
@@ -90,6 +96,7 @@ func newFFmpegVideo(ctx context.Context, p *videoParams) (videoPipe, error) {
 	if bin == "" {
 		return nil, fmt.Errorf("%w (ffmpeg nicht gefunden)", errNoVideo)
 	}
+	useInputDesktop()
 	if screenshot.NumActiveDisplays() == 0 {
 		return nil, errors.New("kein Bildschirm")
 	}
@@ -100,6 +107,7 @@ func newFFmpegVideo(ctx context.Context, p *videoParams) (videoPipe, error) {
 	p.OutW, p.OutH = even(img.Rect.Dx()), even(img.Rect.Dy())
 	cctx, cancel := context.WithCancel(ctx)
 	f := &ffmpegVideo{p: p, ctx: cctx, cancel: cancel, bin: bin, enc: ffmpegEncoders()[0]}
+	f.capError = p.CapError
 	f.bps.Store(int64(p.Bitrate))
 	f.alive.Store(true)
 	f.wg.Add(1)
@@ -107,11 +115,21 @@ func newFFmpegVideo(ctx context.Context, p *videoParams) (videoPipe, error) {
 	return f, nil
 }
 
-func (f *ffmpegVideo) Name() string       { return "ffmpeg/" + f.enc }
-func (f *ffmpegVideo) Alive() bool        { return f.alive.Load() }
-func (f *ffmpegVideo) SetBitrate(bps int) { f.bps.Store(int64(bps)); f.restart.Store(true) }
-func (f *ffmpegVideo) RequestKey()        { f.restart.Store(true) }
-func (f *ffmpegVideo) Close()             { f.cancel(); f.wg.Wait() }
+func (f *ffmpegVideo) Name() string { return "ffmpeg/" + f.enc }
+func (f *ffmpegVideo) Alive() bool  { return f.alive.Load() }
+
+// SetBitrate: ffmpeg kann die Bitrate nur durch Neustart ändern; deshalb nur bei deutlicher
+// Änderung und höchstens alle 15 Sekunden.
+func (f *ffmpegVideo) SetBitrate(bps int) {
+	old := f.bps.Load()
+	if time.Now().Unix()-f.started.Load() < 15 || (int64(bps)*10 < old*16 && int64(bps)*10 > old*6) {
+		return
+	}
+	f.bps.Store(int64(bps))
+	f.restart.Store(true)
+}
+func (f *ffmpegVideo) RequestKey() { f.restart.Store(true) }
+func (f *ffmpegVideo) Close()      { f.cancel(); f.wg.Wait() }
 
 // run probiert Encoder der Reihe nach; ein Lauf endet bei Neustartwunsch (neues Schlüsselbild/Bitrate).
 func (f *ffmpegVideo) run() {
@@ -140,6 +158,7 @@ func (f *ffmpegVideo) run() {
 // once startet ffmpeg einmal und füttert es mit Bildschirmbildern.
 func (f *ffmpegVideo) once() (produced bool, err error) {
 	f.restart.Store(false)
+	f.started.Store(time.Now().Unix())
 	p := f.p
 	args := []string{"-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
 		"-video_size", fmt.Sprintf("%dx%d", p.OutW, p.OutH), "-framerate", strconv.Itoa(p.FPS), "-i", "-", "-an"}
@@ -169,7 +188,7 @@ func (f *ffmpegVideo) once() (produced bool, err error) {
 	go func() { // Bildschirm abgreifen
 		defer stdin.Close()
 		var prev []byte
-		idle := 0
+		idle, failed := 0, 0
 		tick := time.NewTicker(time.Second / time.Duration(p.FPS))
 		defer tick.Stop()
 		for {
@@ -183,10 +202,18 @@ func (f *ffmpegVideo) once() (produced bool, err error) {
 			if f.restart.Load() {
 				return
 			}
+			useInputDesktop()
 			img, err := screenshot.CaptureRect(p.Bounds)
 			if err != nil || img.Rect.Dx() < p.OutW || img.Rect.Dy() < p.OutH {
+				if failed++; failed > p.FPS && err != nil && f.capError != nil {
+					f.capError("Aufnahme fehlgeschlagen: " + err.Error())
+				}
 				continue
 			}
+			if failed > 0 && f.capError != nil {
+				f.capError("")
+			}
+			failed = 0
 			pix := img.Pix
 			if img.Stride != p.OutW*4 || img.Rect.Dy() != p.OutH { // auf Kodiergröße zuschneiden
 				pix = make([]byte, 0, p.OutW*p.OutH*4)

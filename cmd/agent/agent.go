@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const version = "1.3.0"
+const version = "1.4.0"
 
 // Msg ist die gemeinsame JSON-Nachricht zwischen Viewer, Relay und Agent.
 type Msg struct {
@@ -68,6 +68,7 @@ type Agent struct {
 	quality   atomic.Int32
 	codec     atomic.Int32
 	keyReq    atomic.Bool
+	capErr    atomic.Pointer[string]
 	fl        flow
 	in        Input
 
@@ -291,6 +292,12 @@ func (a *Agent) send(mt int, b []byte) error {
 
 func (a *Agent) handle(ctx context.Context, m *Msg) {
 	switch m.T {
+	case "mm", "md", "mu", "wh", "k", "clip":
+		useInputDesktop()
+	}
+	switch m.T {
+	case "sas":
+		sendSAS()
 	case "welcome":
 		if m.Approved {
 			a.setOwner(m.Owner)
@@ -377,6 +384,9 @@ func (a *Agent) viewer(on bool) {
 	if on {
 		ctx, cancel := context.WithCancel(context.Background())
 		a.capCancel = cancel
+		a.setCapError("")
+		a.fl.sent.Store(0)
+		go a.watchCapture(ctx)
 		go a.captureLoop(ctx)
 		go a.clipboardLoop(ctx)
 	} else {

@@ -19,13 +19,14 @@ func main() {
 	cert := flag.String("cert", "", "TLS-Zertifikat (optional, sonst Reverse-Proxy verwenden)")
 	key := flag.String("key", "", "TLS-Schlüssel")
 	open := flag.Bool("open-registration", false, "Registrierung für jeden erlauben (sonst nur der erste Benutzer bzw. per 'adduser')")
+	updates := flag.String("updates", "", "Ordner mit signierten Update-Paketen (optional)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Aufruf:\n  server [Optionen]\n  server [Optionen] adduser <name> <passwort>\n  server [Optionen] setuser <name>   (Passwort von der Standardeingabe; anlegen oder ändern)\n  server [Optionen] deluser <name>\n  server [Optionen] totp-new <name>  (neues Geheimnis anzeigen, ändert nichts)\n  server [Optionen] totp-set <name>  (Standardeingabe: Geheimnis, dann Einmalcode)\n  server [Optionen] totp-off <name>\n\nVorher den laufenden Server stoppen.\n\nOptionen:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	srv, err := server.New(server.Config{Addr: *addr, DataFile: *data, CertFile: *cert, KeyFile: *key, OpenRegistration: *open})
+	srv, err := server.New(server.Config{Addr: *addr, DataFile: *data, CertFile: *cert, KeyFile: *key, OpenRegistration: *open, UpdateDir: *updates})
 	if err != nil {
 		log.Fatal(err)
 	}

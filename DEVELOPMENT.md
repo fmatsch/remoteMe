@@ -59,6 +59,16 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 
 Meldet der Agent kein Bild, schickt er `{t:"nocap", msg}` (`nocap.go`).
 
+## 1d. Updates und Monitoring
+
+**Updates** (`cmd/agent/update*.go`, `internal/update`): `deploy/publish-update.sh` baut alle Plattformen, signiert `manifest.json` (Ed25519) und legt alles nach `/opt/remoteme/updates` (Server-Option `-updates`, öffentlich unter `/update/`). Der Besitzer löst das Update in der Geräteliste aus (`POST /api/devices/{id}/update` → `{t:"update"}`). Der Agent prüft Signatur (`updatekey.go`), **nur neuere Version**, Größe und SHA-256, startet die neue Datei probehalber (`-version`) und tauscht sie aus (`.old` bleibt liegen). macOS: ganzes `.app`, bei Zertifikatssignatur nur mit demselben Zertifikat. Windows-Dienst: Helfer ersetzt die Datei, Ereignis `Global\remoteMeRestart`, der Dienst beendet sich und wird von der Wiederherstellungsaktion neu gestartet. ffmpeg wird nicht mit aktualisiert.
+
+**Der private Schlüssel** liegt nur beim Herausgeber (`~/Library/Application Support/remoteMe-signing/update.key`) – sichern. Ohne ihn lassen sich installierte Programme nicht mehr aktualisieren; wer ihn hat und den Server kontrolliert, kann Programme auf allen Rechnern ausführen.
+
+Ablauf einer neuen Version: Version in `cmd/agent/agent.go` erhöhen → committen → `deploy/deploy.sh` → `deploy/publish-update.sh`.
+
+**Monitoring** (`stats*.go`, `internal/server/monitor.go`): alle 10 s `{t:"stats",cpu,memUsed,memTotal,disks,rx,tx}`; der Server begrenzt die Werte, hält die letzten 10 Minuten nur im Speicher und zeigt sie dem Besitzer in der Geräteliste (Mac-App: Knopf „Monitor“). Windows misst nur lokale Festplatten.
+
 ## 2. Architektur
 
 ```

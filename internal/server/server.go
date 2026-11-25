@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"remoteme/internal/update"
 )
 
 //go:embed web
@@ -23,6 +25,7 @@ type Config struct {
 	CertFile         string
 	KeyFile          string
 	OpenRegistration bool
+	UpdateDir        string // signierte Pakete für Agents (manifest.json, manifest.sig, Dateien)
 }
 
 type Server struct {
@@ -57,6 +60,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("DELETE /api/devices/{id}", s.auth(s.hDelete))
 	mux.HandleFunc("POST /api/devices/{id}/upload", s.auth(s.hUpload))
 	mux.HandleFunc("GET /api/devices/{id}/download", s.auth(s.hDownload))
+	mux.HandleFunc("POST /api/devices/{id}/update", s.auth(s.hUpdate))
+	mux.HandleFunc("GET /update/{file}", s.hUpdateFile)
 	mux.HandleFunc("POST /api/agent/pair", s.hPair)
 	mux.HandleFunc("GET /ws/agent", s.hAgentWS)
 	mux.HandleFunc("GET /ws/view/{id}", s.auth(s.hViewWS))
@@ -277,13 +282,34 @@ func (s *Server) hDevices(w http.ResponseWriter, r *http.Request, user string) {
 		// Claimable: verfügbarer Rechner ohne Besitzer; NeedsPassword: Übernahme verlangt das Zugriffspasswort.
 		Claimable     bool `json:"claimable"`
 		NeedsPassword bool `json:"needsPassword"`
+		// Nur für eigene, verbundene Computer.
+		Version         string `json:"version,omitempty"`
+		Service         bool   `json:"service,omitempty"`
+		UpdateAvailable string `json:"updateAvailable,omitempty"`
+		UpdateStatus    string `json:"updateStatus,omitempty"`
+		Stats           *stats `json:"stats,omitempty"`
+		CPUHist         []int  `json:"cpuHist,omitempty"`
+		MemHist         []int  `json:"memHist,omitempty"`
 	}
+	manifest := s.manifest()
 	out := []dev{}
 	for _, d := range s.st.DevicesFor(user) {
 		x := dev{ID: d.ID, Name: d.Name, OS: d.OS, Approved: d.Approved, LastSeen: d.LastSeen,
 			Claimable: d.Owner == "", NeedsPassword: d.PassHash != ""}
 		if ac := s.agent(d.ID); ac != nil {
 			x.Online, x.Busy = true, ac.hasViewer()
+			if d.Owner == user && d.Approved {
+				i := &ac.info
+				i.mu.Lock()
+				x.Version, x.Service, x.UpdateStatus, x.Stats = i.version, i.service, i.status, i.last
+				x.CPUHist, x.MemHist = append([]int(nil), i.cpuHist...), append([]int(nil), i.memHist...)
+				if manifest != nil && i.platform != "" && update.Newer(manifest.Version, i.version) {
+					if _, ok := manifest.Files[i.platform]; ok {
+						x.UpdateAvailable = manifest.Version
+					}
+				}
+				i.mu.Unlock()
+			}
 		}
 		if x.Claimable && !x.Online {
 			continue // nur tatsächlich verfügbare Rechner anzeigen

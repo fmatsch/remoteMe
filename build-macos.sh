@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SERVER=""; VERSION="$(grep -m1 'const version' cmd/agent/agent.go | cut -d'"' -f2)"; IDENT=""; DMG=0
+SERVER=""; VERSION="$(grep -m1 '^var version' cmd/agent/agent.go | cut -d'"' -f2)"; IDENT=""; DMG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -s) SERVER="$2"; shift 2 ;;
@@ -25,7 +25,7 @@ OUT=dist/macos
 APP="$OUT/remoteMe.app"
 rm -rf "$OUT"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OUT/tmp"
 
-LD="-s -w"
+LD="-s -w -X main.version=$VERSION"
 [ -n "$SERVER" ] && LD="$LD -X main.defaultServer=$SERVER"
 export CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0"
 for arch in arm64 amd64; do

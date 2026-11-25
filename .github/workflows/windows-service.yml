@@ -16,7 +16,12 @@ jobs:
       - name: Bauen
         run: |
           go build -o dist/server.exe ./cmd/server
-          go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/app/remoteMe.exe ./cmd/agent
+          $env:CGO_ENABLED = "0"
+          $pub = go run ./cmd/signupdate keygen dist/test.key
+          go build -trimpath -ldflags "-s -w -H=windowsgui -X main.updatePublicKey=$pub" -o dist/app/remoteMe.exe ./cmd/agent
+          New-Item -ItemType Directory -Force dist/updates | Out-Null
+          go build -trimpath -ldflags "-s -w -H=windowsgui -X main.updatePublicKey=$pub -X main.version=9.9.9" -o dist/updates/new.exe ./cmd/agent
+          go run ./cmd/signupdate sign dist/test.key 9.9.9 dist/updates windows-amd64=new.exe
           go build -o dist/e2e.exe ./test/e2e
       - name: ffmpeg beilegen
         shell: pwsh
@@ -31,7 +36,7 @@ jobs:
       - name: Testserver, Dienst installieren, Bild empfangen
         shell: pwsh
         run: |
-          Start-Process dist/server.exe -ArgumentList "-addr","127.0.0.1:8099","-data","$PWD/dist/data.json" -RedirectStandardError dist/server.log
+          Start-Process dist/server.exe -ArgumentList "-addr","127.0.0.1:8099","-data","$PWD/dist/data.json","-updates","$PWD/dist/updates" -RedirectStandardError dist/server.log
           Start-Sleep 2
           $pw = [guid]::NewGuid().ToString()
           "E2E_PW=$pw" | Out-File $env:GITHUB_ENV -Append
@@ -39,6 +44,23 @@ jobs:
           $p = Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/agent/pair -Body (@{name="runner";os="windows";password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json
           "E2E_DEV=$($p.id)" | Out-File $env:GITHUB_ENV -Append
           "E2E_CODE=$($p.code)" | Out-File $env:GITHUB_ENV -Append
+          # --- Update als normales Programm (ohne Dienst) ---
+          $s0 = $null
+          Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/login -Headers @{"X-FW"="1"} -Body (@{username="citest";password=$pw}|ConvertTo-Json) -ContentType application/json -SessionVariable s0 | Out-Null
+          $u = Invoke-RestMethod -Method Post http://127.0.0.1:8099/api/agent/pair -Body (@{name="benutzermodus";os="windows";password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json
+          New-Item -ItemType Directory -Force "$env:APPDATA\remoteMe","dist/user" | Out-Null
+          Copy-Item dist/app/remoteMe.exe dist/user/
+          @{server="http://127.0.0.1:8099";id=$u.id;secret=$u.secret;name="benutzermodus";code=$u.code} | ConvertTo-Json | Set-Content -Encoding ascii "$env:APPDATA\remoteMe\agent.json"
+          Start-Process dist/user/remoteMe.exe -ArgumentList "-background"
+          Start-Sleep 3
+          Invoke-RestMethod -Method Post "http://127.0.0.1:8099/api/devices/$($u.id)/approve" -Headers @{"X-FW"="1"} -WebSession $s0 -Body (@{code=$u.code;password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json | Out-Null
+          dist/e2e.exe -password $pw -device $u.id -update 9.9.9
+          if ($LASTEXITCODE) { throw "Update im Benutzermodus fehlgeschlagen" }
+          Get-Content "$env:APPDATA\remoteMe\agent.log"
+          Get-Process remoteMe | Stop-Process -Force
+          Remove-Item -Recurse -Force "$env:APPDATA\remoteMe"
+          Start-Sleep 2
+          # --- Dienst ---
           @{server="http://127.0.0.1:8099";id=$p.id;secret=$p.secret;name="runner";code=$p.code} | ConvertTo-Json | Set-Content -Encoding ascii dist/agent.json
           $r = Start-Process dist/app/remoteMe.exe -ArgumentList "-install","-from","`"$PWD\dist\agent.json`"","-quiet" -Wait -PassThru
           if ($r.ExitCode -ne 0) { throw "Installation fehlgeschlagen ($($r.ExitCode))" }
@@ -56,6 +78,14 @@ jobs:
           Invoke-RestMethod -Method Post "http://127.0.0.1:8099/api/devices/$($p.id)/approve" -Headers @{"X-FW"="1"} -WebSession $s -Body (@{code=$p.code;password="ziel-passwort"}|ConvertTo-Json) -ContentType application/json
           Start-Sleep 2
           dist/e2e.exe -password $pw -device $p.id -out out
+          if ($LASTEXITCODE) { throw "Bildtest fehlgeschlagen" }
+          # --- Update des Dienstes (Helfer ersetzt die Datei, Dienst startet neu) ---
+          dist/e2e.exe -password $pw -device $p.id -update 9.9.9
+          if ($LASTEXITCODE) { throw "Update des Dienstes fehlgeschlagen" }
+          Get-Service remoteMe | Format-List Name,Status
+          Get-CimInstance Win32_Process -Filter "Name='remoteMe.exe'" | Select-Object ProcessId,SessionId,CommandLine | Format-Table -AutoSize
+          Get-ChildItem "$env:ProgramFiles\remoteMe" | Select-Object Name,Length
+          & "$env:ProgramFiles\remoteMe\remoteMe.exe" -version | ForEach-Object { "Programmdatei: $_" }
       - name: Protokolle
         if: always()
         shell: pwsh

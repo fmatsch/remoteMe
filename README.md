@@ -42,6 +42,11 @@ deploy/user.sh --totp-off NAME  # zweiten Faktor abschalten (z. B. Telefon verlo
 deploy/user.sh --delete NAME    # Benutzer samt seinen Computern löschen
 ```
 
+## Auslastung und Updates
+
+* **Monitor:** Die Geräteliste (Browser; Mac-App: Knopf „Monitor“) zeigt für jeden verbundenen eigenen Computer CPU, RAM, Festplatten und Netzwerk mit Verlauf der letzten 10 Minuten.
+* **Updates ohne Neuinstallation (ab 1.5.0):** Ist auf dem Server eine neuere Version bereitgestellt (`deploy/publish-update.sh`), erscheint beim Computer „Auf X aktualisieren“. Kopplung, Dienst und – auf dem Mac – die Freigaben bleiben erhalten. Pakete sind signiert; nur neuere Versionen werden angenommen. Computer mit 1.4.0 oder älter einmal von Hand auf 1.5.0 bringen.
+
 ## Agent
 
 * **Windows:** `remoteme-agent-windows-amd64.exe` doppelklicken. Läuft ohne Fenster im Hintergrund; Einstellungen unter `http://127.0.0.1:17321` (erneutes Starten öffnet die Seite wieder).

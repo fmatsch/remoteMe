@@ -36,6 +36,11 @@ header.top h1{font-size:18px;margin:0;flex:1}
 .dev .row{display:flex;gap:8px}.dev .row .pri{flex:1}
 .dev input{margin-bottom:8px;letter-spacing:.2em;font:600 18px ui-monospace,Consolas,monospace;text-align:center}
 .dev input.pw{letter-spacing:normal;font:inherit}
+.grid .dev .load{font-size:12px;color:var(--mut);margin:-6px 0 12px}
+.load .m{display:flex;align-items:center;gap:8px;margin:3px 0}.load .m b{width:62px;font-weight:600;overflow:hidden;white-space:nowrap}
+.load .bar{flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}.load .bar i{display:block;height:100%;background:var(--acc)}
+.load .bar i.hi{background:var(--warn)}.load .m span{width:112px;text-align:right;font-variant-numeric:tabular-nums}
+.load svg{display:block;width:100%;height:34px;margin:6px 0 2px}.load .upd{margin:6px 0}
 .dev input::placeholder{letter-spacing:normal;font:14px system-ui,sans-serif}
 .help{margin-top:22px;color:var(--mut);font-size:14px}
 .help ol{padding-left:20px;margin:6px 0}
@@ -190,6 +195,7 @@ async function loadDevices() {
   const j = JSON.stringify(list); if (j === lastDevJson) return; lastDevJson = j;
   $('empty').classList.toggle('hide', list.length > 0);
   $('devs').innerHTML = list.map(d => {
+    const load = loadHtml(d);
     const state = d.claimable ? 'verfügbar' : !d.approved ? 'wartet auf Freigabe' : d.online ? (d.busy ? 'online (in Benutzung)' : 'online') : 'offline';
     const actions = d.approved
       ? `<div class="row"><button class="pri act-conn" ${d.online ? '' : 'disabled'}>Verbinden</button><button class="danger act-del">Entfernen</button></div>`
@@ -200,14 +206,46 @@ async function loadDevices() {
     <div class="card dev" data-id="${d.id}">
       <div class="name"><span class="dot ${!d.approved ? 'pend' : d.online ? 'on' : ''}"></span>${esc(d.name || 'Unbenannt')}</div>
       <div class="meta">${Object.hasOwn(osName, d.os) ? osName[d.os] : esc(d.os)} · ${state}</div>
+      ${load}
       ${actions}
     </div>`;
   }).join('');
 };
+/* Auslastung: alle Werte stammen vom Zielrechner und werden als Zahlen bzw. maskiert ausgegeben */
+function gb(n) { n = num(n) / 1073741824; return n >= 100 ? Math.round(n) : n.toFixed(1); }
+function rate(n) { n = num(n); return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB/s' : Math.round(n / 1024) + ' KB/s'; }
+function meter(label, pct, text) {
+  pct = Math.min(num(pct), 100);
+  return `<div class="m"><b title="${esc(label)}">${esc(label)}</b><div class="bar"><i class="${pct >= 90 ? 'hi' : ''}" style="width:${pct}%"></i></div><span>${text}</span></div>`;
+}
+function line(values, color) {
+  const v = values.map(x => Math.min(num(x), 100)), n = 60;
+  return `<polyline fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${v.map((y, i) => `${n - v.length + i},${32 - y * .3}`).join(' ')}"/>`;
+}
+function loadHtml(d) {
+  const s = d.stats;
+  if (!d.version && !s) return '';
+  let h = '<div class="load">';
+  if (s) {
+    if (s.cpu !== undefined) h += meter('CPU', s.cpu, num(s.cpu) + ' %');
+    if (num(s.memTotal)) h += meter('RAM', num(s.memUsed) / num(s.memTotal) * 100, `${gb(s.memUsed)} / ${gb(s.memTotal)} GB`);
+    for (const k of s.disks || []) if (num(k.total)) h += meter(k.n, num(k.used) / num(k.total) * 100, `${gb(num(k.total) - num(k.used))} GB frei`);
+    if (s.rx !== undefined) h += `<div class="m"><b>Netz</b><div style="flex:1">↓ ${rate(s.rx)} · ↑ ${rate(s.tx)}</div></div>`;
+    if ((d.cpuHist || []).length > 1) h += `<svg viewBox="0 0 60 34" preserveAspectRatio="none" role="img" aria-label="Verlauf CPU und RAM, letzte 10 Minuten">${line(d.memHist || [], '#94a3b8')}${line(d.cpuHist, '#2563eb')}</svg><div>Verlauf 10 min: <span style="color:#2563eb">CPU</span> · RAM</div>`;
+  }
+  if (d.version) h += `<div>Version ${esc(d.version)}${d.service ? ' · Dienst' : ''}</div>`;
+  if (d.updateStatus) h += `<div>${esc(d.updateStatus)}</div>`;
+  if (d.updateAvailable) h += `<button class="upd act-upd">Auf ${esc(d.updateAvailable)} aktualisieren</button>`;
+  return h + '</div>';
+}
 $('devs').onclick = async e => {
   const card = e.target.closest('.dev'); if (!card) return;
   const id = card.dataset.id;
-  if (e.target.classList.contains('act-conn')) openSession(id, card.querySelector('.name').textContent);
+  if (e.target.classList.contains('act-upd')) {
+    if (!confirm('Dieses Gerät jetzt aktualisieren? Eine laufende Sitzung wird kurz unterbrochen.')) return;
+    e.target.disabled = true;
+    await api(`/api/devices/${id}/update`, 'POST').catch(err => toast(err.message)); lastDevJson = ''; loadDevices();
+  } else if (e.target.classList.contains('act-conn')) openSession(id, card.querySelector('.name').textContent);
   else if (e.target.classList.contains('act-del')) {
     if (!confirm('Dieses Gerät wirklich entfernen? Der Zugriff wird sofort beendet.')) return;
     await api('/api/devices/' + id, 'DELETE').catch(err => toast(err.message)); lastDevJson = ''; loadDevices();

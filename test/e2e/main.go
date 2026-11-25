@@ -29,6 +29,7 @@ func main() {
 	pw := flag.String("password", "", "")
 	dev := flag.String("device", "", "")
 	out := flag.String("out", "out", "")
+	updateTo := flag.String("update", "", "nur Messwerte prüfen und auf diese Version aktualisieren")
 	flag.Parse()
 	os.MkdirAll(*out, 0o755)
 
@@ -42,6 +43,11 @@ func main() {
 		log.Fatal("Anmeldung fehlgeschlagen: ", err)
 	}
 	io.Copy(io.Discard, resp.Body)
+
+	if *updateTo != "" {
+		testUpdate(cl, *server, *dev, *updateTo)
+		return
+	}
 
 	d := websocket.Dialer{Jar: jar}
 	ws, _, err := d.Dial("ws"+strings.TrimPrefix(*server, "http")+"/ws/view/"+*dev, nil)
@@ -169,4 +175,57 @@ func main() {
 	if jpegFrames == 0 {
 		log.Fatal("FEHLER: kein einziges Bild empfangen")
 	}
+}
+
+// testUpdate prüft die gemeldete Auslastung, löst das Update aus und wartet auf die neue Version.
+func testUpdate(cl *http.Client, server, dev, want string) {
+	get := func() map[string]any {
+		r, err := cl.Get(server + "/api/devices")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer r.Body.Close()
+		var list []map[string]any
+		json.NewDecoder(r.Body).Decode(&list)
+		for _, d := range list {
+			if d["id"] == dev {
+				return d
+			}
+		}
+		log.Fatal("Gerät nicht in der Liste")
+		return nil
+	}
+	wait := func(what string, d time.Duration, ok func(map[string]any) bool) map[string]any {
+		var last map[string]any
+		for end := time.Now().Add(d); time.Now().Before(end); time.Sleep(2 * time.Second) {
+			if last = get(); ok(last) {
+				return last
+			}
+		}
+		b, _ := json.Marshal(last)
+		log.Fatal("FEHLER: Zeitüberschreitung bei ", what, ": ", string(b))
+		return nil
+	}
+	m := wait("Messwerte", 60*time.Second, func(d map[string]any) bool {
+		s, ok := d["stats"].(map[string]any)
+		return ok && s["cpu"] != nil && s["rx"] != nil && d["updateAvailable"] == want
+	})
+	b, _ := json.Marshal(map[string]any{"version": m["version"], "service": m["service"], "stats": m["stats"], "updateAvailable": m["updateAvailable"]})
+	fmt.Println("Messwerte:", string(b))
+
+	req, _ := http.NewRequest("POST", server+"/api/devices/"+dev+"/update", nil)
+	req.Header.Set("X-FW", "1")
+	r, err := cl.Do(req)
+	if err != nil || r.StatusCode != 200 {
+		log.Fatal("FEHLER: Update nicht ausgelöst ", err)
+	}
+	last := ""
+	m = wait("neue Version "+want, 120*time.Second, func(d map[string]any) bool {
+		if st, _ := d["updateStatus"].(string); st != "" && st != last {
+			last = st
+			fmt.Println("Status:", st)
+		}
+		return d["online"] == true && d["version"] == want
+	})
+	fmt.Println("AKTUALISIERT auf", m["version"], "| Dienst:", m["service"] == true)
 }

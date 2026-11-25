@@ -90,6 +90,8 @@ type agentConn struct {
 	waiters map[uint32]*waiter
 	closed  chan struct{}
 	once    sync.Once
+
+	info agentInfo // Version und Auslastung
 }
 
 type viewerConn struct {
@@ -234,6 +236,12 @@ func (s *Server) hAgentWS(w http.ResponseWriter, r *http.Request) {
 				var hi struct{ Name, OS string }
 				json.Unmarshal(data, &hi)
 				s.st.Touch(id, "", hi.OS)
+				ac.info.hello(data)
+			case "stats":
+				ac.info.addStats(data)
+			case "update-status":
+				ac.info.setStatus(data)
+				log.Printf("Update %s: %s", dev.Name, short(string(data), 200))
 			case "ul-done", "dl-head", "dl-end", "dl-err":
 				ac.deliver(h.Req, xmsg{text: data})
 			default:

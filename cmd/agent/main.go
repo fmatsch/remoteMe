@@ -21,8 +21,13 @@ const uiPort = 17321
 func main() {
 	background := flag.Bool("background", false, "ohne Browserfenster starten (Autostart)")
 	server := flag.String("server", "", "Server-Adresse vorbelegen")
+	showVersion := flag.Bool("version", false, "Version ausgeben")
 	platform := platformFlags()
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 	if *server != "" {
 		defaultServer = *server
 	}
@@ -44,7 +49,9 @@ func main() {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
 		log.Printf("Agent %s gestartet (Dienst)", version)
-		newAgent().run(ctx)
+		a := newAgent()
+		go a.statsLoop(ctx)
+		a.run(ctx)
 		return
 	}
 
@@ -66,6 +73,7 @@ func main() {
 		return
 	}
 
+	releaseInstance = func() { ln.Close() }
 	a := newAgent()
 	u := newUI(a, ln)
 	go u.serve(ln)
@@ -73,6 +81,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	go a.run(ctx)
+	go a.statsLoop(ctx)
 	log.Printf("Agent %s gestartet", version)
 
 	showSetup := !*background || a.config() == nil

@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User=remoteme
 Group=remoteme
-ExecStart=/opt/remoteme/remoteme-server -addr 127.0.0.1:__PORT__ -data /srv/remoteme/data.json
+ExecStart=/opt/remoteme/remoteme-server -addr 127.0.0.1:__PORT__ -data /srv/remoteme/data.json -updates /opt/remoteme/updates
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

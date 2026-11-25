@@ -69,7 +69,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 }
 @end
 
-@interface FWRemote : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
+@interface FWRemote : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, WKUIDelegate>
 @property(strong) NSWindow *win;
 @property(strong) NSView *loginView, *listView;
 @property(strong) NSTextField *fServer, *fUser, *fPass, *fCode, *loginErr, *whoLabel, *listErr;
@@ -155,6 +155,9 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	self.removeBtn = [NSButton buttonWithTitle:@"Entfernen" target:self action:@selector(doRemove:)];
 	self.removeBtn.frame = NSMakeRect(RW - 28 - 330 - 16, 20, 100, 32);
 	[l addSubview:self.removeBtn];
+	NSButton *mon = [NSButton buttonWithTitle:@"Monitor" target:self action:@selector(doMonitor:)];
+	mon.frame = NSMakeRect(RW - 28 - 100, RH - 56, 100, 28);
+	[l addSubview:mon];
 	NSButton *out = [NSButton buttonWithTitle:@"Abmelden" target:self action:@selector(doLogout:)];
 	out.frame = NSMakeRect(28, 20, 100, 32);
 	[l addSubview:out];
@@ -329,6 +332,14 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	NSDictionary *d = [self selected];
 	if (d && ![d[@"approved"] boolValue]) { [self doApprove:nil]; return; }
 	if (!d || ![d[@"online"] boolValue]) return;
+	NSString *name = [d[@"name"] stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.alphanumericCharacterSet] ?: @"";
+	[self openWeb:[NSString stringWithFormat:@"app=1&d=%@&n=%@", d[@"id"], name] title:[NSString stringWithFormat:@"%@ – remoteMe", d[@"name"]]];
+}
+
+// Monitor: die Geräteliste der Weboberfläche mit Auslastung, Verlauf und Updates.
+- (void)doMonitor:(id)s { [self openWeb:@"monitor=1" title:@"remoteMe – Monitor"]; }
+
+- (void)openWeb:(NSString *)fragment title:(NSString *)title {
 	NSDictionary *info = jsonOf(goRemoteInfo());
 	NSDictionary *ck = jsonOf(goRemoteCookie());
 	if (!ck[@"value"]) { self.listErr.stringValue = @"Sitzung abgelaufen – bitte neu anmelden."; return; }
@@ -344,22 +355,29 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	NSWindow *w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1180, 760)
 		styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
 		backing:NSBackingStoreBuffered defer:NO];
-	w.title = [NSString stringWithFormat:@"%@ – remoteMe", d[@"name"]];
+	w.title = title;
 	w.releasedWhenClosed = NO; w.delegate = self; w.minSize = NSMakeSize(640, 420);
 	[w center];
 	FWWebView *wv = [[FWWebView alloc] initWithFrame:w.contentView.bounds configuration:cfg];
 	wv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+	wv.UIDelegate = self; // Rückfragen (confirm) der Seite anzeigen
 	[w.contentView addSubview:wv];
 	[self.sessions addObject:w];
-	NSString *base = info[@"server"];
-	NSString *name = [d[@"name"] stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.alphanumericCharacterSet] ?: @"";
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/#app=1&d=%@&n=%@", base, d[@"id"], name]];
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/#%@", info[@"server"], fragment]];
 	[cfg.websiteDataStore.httpCookieStore setCookie:cookie completionHandler:^{
 		[wv loadRequest:[NSURLRequest requestWithURL:url]];
 	}];
 	[NSApp activateIgnoringOtherApps:YES];
 	[w makeKeyAndOrderFront:nil];
 	[w makeFirstResponder:wv];
+}
+
+// Ohne diese Methode beantwortet WKWebView jedes confirm() der Seite stillschweigend mit "Nein".
+- (void)webView:(WKWebView *)wv runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)f completionHandler:(void (^)(BOOL))done {
+	NSAlert *a = [[NSAlert alloc] init];
+	a.messageText = message;
+	[a addButtonWithTitle:@"OK"]; [a addButtonWithTitle:@"Abbrechen"];
+	done([a runModal] == NSAlertFirstButtonReturn);
 }
 
 - (void)windowWillClose:(NSNotification *)n {

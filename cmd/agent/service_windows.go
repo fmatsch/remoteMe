@@ -518,6 +518,13 @@ func (*service) Execute(_ []string, r <-chan svc.ChangeRequest, status chan<- sv
 	if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
 		log.Println("Ereignis für Strg+Alt+Entf:", err)
 	}
+	// Nach einem Update meldet sich der Helfer; der Dienst beendet sich dann so, dass Windows ihn
+	// (Wiederherstellungsaktion) mit der neuen Programmdatei neu startet.
+	rname, _ := windows.UTF16PtrFromString(restartEvent)
+	restart, err := windows.CreateEvent(nil, 0, 0, rname)
+	if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		log.Println("Ereignis für Neustart:", err)
+	}
 	var process, job windows.Handle
 	var session uint32
 	var started time.Time
@@ -551,6 +558,14 @@ func (*service) Execute(_ []string, r <-chan svc.ChangeRequest, status chan<- sv
 				if err := pSendSAS.Find(); err == nil {
 					pSendSAS.Call(0)
 				}
+			}
+		}
+		if restart != 0 {
+			if ev, _ := windows.WaitForSingleObject(restart, 0); ev == windows.WAIT_OBJECT_0 {
+				log.Println("Neustart nach Update")
+				time.Sleep(time.Second)
+				stop()
+				os.Exit(1)
 			}
 		}
 		want := activeSession()

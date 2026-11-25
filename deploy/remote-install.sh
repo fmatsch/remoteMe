@@ -8,6 +8,7 @@ mkdir -p /srv/remoteme && chown -R remoteme:remoteme /srv/remoteme && chmod 700 
 chown root:root /opt/remoteme && chmod 755 /opt/remoteme
 mv -f /opt/remoteme/remoteme-server.new /opt/remoteme/remoteme-server
 chown root:root /opt/remoteme/remoteme-server && chmod 755 /opt/remoteme/remoteme-server
+mkdir -p /opt/remoteme/updates && chown root:root /opt/remoteme/updates && chmod 755 /opt/remoteme/updates
 systemctl daemon-reload
 systemctl enable remoteme >/dev/null 2>&1
 systemctl restart remoteme
@@ -55,6 +56,19 @@ pattern = r"\t# remoteMe \(Fernwartung\)[^\n]*\n\tredir /remote /remote/ 308\n\t
 s, n = re.subn(pattern, lambda m: block, s)
 assert n == 1, "alter remoteMe-Block in depesche.caddy nicht wie erwartet"
 open(f, "w").write(s)
+PY
+fi
+
+# Bestehende Zielrechner mit der alten Adresse müssen auch Updates abrufen können.
+if grep -q 'handle /remote/ws/agent' /etc/caddy/depesche.caddy 2>/dev/null && ! grep -q 'handle /remote/update/' /etc/caddy/depesche.caddy; then
+  python3 - "$PORT" <<'PY'
+import sys
+port, f = sys.argv[1], "/etc/caddy/depesche.caddy"
+s = open(f).read()
+block = "\thandle /remote/update/* {\n\t\turi strip_prefix /remote\n\t\treverse_proxy 127.0.0.1:" + port + "\n\t}\n"
+marker = "\thandle /remote/ws/agent {"
+assert s.count(marker) == 1
+open(f, "w").write(s.replace(marker, block + marker))
 PY
 fi
 

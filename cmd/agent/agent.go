@@ -19,7 +19,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const version = "1.4.0"
+// version ist beim Bauen über -ldflags "-X main.version=..." setzbar (Tests).
+var version = "1.5.0"
 
 // Msg ist die gemeinsame JSON-Nachricht zwischen Viewer, Relay und Agent.
 type Msg struct {
@@ -69,6 +70,7 @@ type Agent struct {
 	codec     atomic.Int32
 	keyReq    atomic.Bool
 	capErr    atomic.Pointer[string]
+	updating  atomic.Bool
 	fl        flow
 	in        Input
 
@@ -244,7 +246,7 @@ func (a *Agent) session(ctx context.Context, cfg *Config) error {
 	}()
 
 	host, _ := os.Hostname()
-	a.sendJSON(map[string]any{"t": "hello", "name": host, "os": runtime.GOOS, "ver": version})
+	a.sendJSON(map[string]any{"t": "hello", "name": host, "os": runtime.GOOS, "arch": platformKey(), "ver": version, "service": machineMode})
 	log.Println("Mit Server verbunden")
 
 	for {
@@ -298,6 +300,8 @@ func (a *Agent) handle(ctx context.Context, m *Msg) {
 	switch m.T {
 	case "sas":
 		sendSAS()
+	case "update":
+		a.startUpdate()
 	case "welcome":
 		if m.Approved {
 			a.setOwner(m.Owner)

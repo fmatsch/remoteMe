@@ -47,9 +47,9 @@ Die Berechtigung gilt für das **Programm, das den Agent startet** (Terminal/iTe
 
 **macOS-App:** `./build-macos.sh [-s https://server/remote] [-v 1.1.0] [-i "Developer ID Application: …"] [--dmg]` baut `dist/macos/remoteMe.app` (Universal arm64+x86_64, Menüleistensymbol, Icon aus `packaging/macos/make-icon.swift`) und optional ein DMG. Ohne `-i` wird ad hoc signiert: läuft auf dem eigenen Mac; auf fremden Macs Rechtsklick → Öffnen (für reibungslose Verteilung Developer-ID-Signatur + Notarisierung nötig). Jede neue ad-hoc-Signatur gilt für macOS als neue App → Freigaben (Bildschirmaufnahme, Bedienungshilfen) müssen nach einem Neubau ggf. erneut erteilt werden. Server ist reines Go und lässt sich für jede Plattform bauen. Als Vorlage liegt `docs/build-workflow.yml.example` bei (GitHub Actions: baut die Agents für Windows, Linux und macOS). Aktiv ist sie nicht, weil der Push-Token auf dem Windows-Rechner keinen `workflow`-Scope hatte: auf dem Mac nach `.github/workflows/build.yml` kopieren und pushen (oder vorher `gh auth refresh -s workflow`).
 
-## 1b. Server-Deployment (Testbetrieb)
+## 1b. Server-Deployment
 
-`deploy/deploy.sh` baut den Linux-Server, lädt ihn per SSH (Schlüssel wie im Praxiskalender-Projekt: `~/.ssh/praxiskalender_ed25519`, `root@138.201.56.28`) hoch und installiert ihn: Dienst `remoteme.service` (Benutzer `remoteme`, Port 4740 auf 127.0.0.1, Daten `/srv/remoteme/data.json`, Programm `/opt/remoteme/`). Caddy: Standard ist der Pfad **`https://www.depes.ch/remote/`** (Block `handle_path /remote/*` in `/etc/caddy/depesche.caddy`, Backup `*.vor-remoteme.<zeit>`; der Viewer ist pfadfähig, `BASE` in `index.html`). Mit `PK_SITE=remote.depes.ch ./deploy/deploy.sh` entsteht stattdessen `/etc/caddy/remoteme.caddy` für eine eigene Domain (DNS-A-Eintrag auf 138.201.56.28 bei world4you nötig). Bei ungültiger Caddy-Konfiguration wird automatisch zurückgesetzt. Agent-Server-Adresse: `https://www.depes.ch/remote` (ohne `/` am Ende).
+`deploy/deploy.sh` baut den Linux-Server, lädt ihn per SSH (`~/.ssh/praxiskalender_ed25519`, `root@138.201.56.28`) hoch und installiert ihn: Dienst `remoteme.service` (Benutzer `remoteme`, Port 4740 auf 127.0.0.1, Daten `/srv/remoteme/data.json`, Programm `/opt/remoteme/`), Caddy-Datei `/etc/caddy/remoteme.caddy` für **https://remote.depes.ch** (eigener Ursprung – nicht unter einem Pfad neben anderen Anwendungen betreiben, sonst teilen sie Cookies und Rechte). Vor jeder Änderung wird `/etc/caddy` nach `/root/remoteme-caddy-<zeit>` gesichert; ungültige Konfiguration wird zurückgesetzt. Unter `www.depes.ch/remote/ws/agent` verbinden sich weiterhin früher gekoppelte Zielrechner (Rest des alten Pfads leitet um).
 
 ## 2. Architektur
 
@@ -95,7 +95,13 @@ Wer sich anmelden kann, sieht Namen und System aller verfügbaren Rechner – Re
 
 **Rollen (Mac-App):** „Nur als Ziel“ oder „Vollversion“ (`role` im Konfigurationsordner, `cmd/agent/role.go`); die Auswahl erscheint beim ersten Start und ist im Einstellungsfenster änderbar. In der Ziel-Rolle sind die Fernsteuer-Menüpunkte ausgeblendet (reine Oberflächen-Einstellung, keine Sicherheitsgrenze).
 
-Weitere Maßnahmen: Passwörter bcrypt, Cookie `fw_session` (HttpOnly, SameSite=Strict, Secure hinter HTTPS), alle schreibenden API-Aufrufe brauchen den Header `X-FW`, WebSocket-Origin-Prüfung, Login-Limit (5/10 min je Name+IP), Registrierung nur für den ersten Benutzer (außer `-open-registration`).
+**Zweiter Faktor:** je Benutzer TOTP (`internal/server/totp.go`), Einrichtung nur auf dem Server (`deploy/user.sh --totp NAME`), jeder Code gilt einmal. Anmeldung `POST /api/login {username,password,code}`; fehlt der Code, kommt 401 mit `totp:true`. Sitzungen gelten 12 h und enden bei Änderung von Passwort oder zweitem Faktor; die Mac-App meldet nicht still neu an.
+
+**Alles vom Zielrechner ist nicht vertrauenswürdig:** Der Viewer wandelt Zahlen mit `num()` und maskiert Texte mit `esc()`; die Content-Security-Policy (`headers.go`) erlaubt nur das eingebettete Skript – deshalb keine `on…=`-Attribute und kein zweites `<script>` in `index.html`.
+
+Weitere Maßnahmen: Passwörter bcrypt, Cookie `fw_session` (HttpOnly, SameSite=Strict, Secure hinter HTTPS), alle schreibenden API-Aufrufe brauchen den Header `X-FW`, WebSocket-Origin-Prüfung, Anmeldebegrenzung (je Absender, je Benutzer+Absender, je Benutzer), `X-Forwarded-For` nur vom lokalen Proxy, Nachrichtengröße der Agents begrenzt (64 KB vor, 16 MB nach Freigabe), höchstens 10 verfügbare Rechner je Absender, Apps verlangen https, lokale Einrichtungsseite nur ohne natives Fenster und nur mit Schlüssel (`ui.token`), Anmeldungen/Fehlversuche/Übernahmen im Protokoll (`journalctl -u remoteme`), Registrierung nur für den ersten Benutzer (außer `-open-registration`).
+
+**Bekannte Grenzen:** keine Ende-zu-Ende-Verschlüsselung (der Server sieht alles), keine Zustimmung/Anzeige am Zielrechner, keine signierten Apps und kein Auto-Update, Zwischenablage des Ziels wird automatisch übertragen. Prüfung der Abhängigkeiten: `go run golang.org/x/vuln/cmd/govulncheck@latest ./cmd/server ./cmd/agent`.
 
 ## 4. Protokoll (Viewer ⇄ Relay ⇄ Agent)
 

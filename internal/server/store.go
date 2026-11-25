@@ -24,6 +24,9 @@ import (
 type User struct {
 	Name string `json:"name"`
 	Hash string `json:"hash"`
+	// Zweiter Faktor (Authenticator-App): Geheimnis und zuletzt benutzter Zeitschritt.
+	TOTP     string `json:"totp,omitempty"`
+	TOTPLast uint64 `json:"totpLast,omitempty"`
 }
 
 type Device struct {
@@ -38,6 +41,8 @@ type Device struct {
 	Tries      int       `json:"tries,omitempty"`
 	Created    time.Time `json:"created"`
 	LastSeen   time.Time `json:"lastSeen"`
+	Seen       bool      `json:"seen,omitempty"` // hat sich mindestens einmal verbunden
+	IP         string    `json:"ip,omitempty"`   // Absender der Anmeldung (Begrenzung)
 }
 
 type Store struct {
@@ -55,13 +60,16 @@ var nameRe = regexp.MustCompile(`^[a-z0-9_.-]{3,32}$`)
 const (
 	pendingTTL = 30 * time.Minute
 	maxPending = 5
-	// Rechner ohne Besitzer ("verfügbar"): Obergrenze und Verfall, wenn sie länger offline sind.
-	maxUnclaimed = 100
-	unclaimedTTL = 7 * 24 * time.Hour
-	minAccessPW  = 6
-	maxTries     = 5
-	sessionTTL   = 14 * 24 * time.Hour
-	minPassword  = 8
+	// Rechner ohne Besitzer ("verfügbar"): Obergrenzen (gesamt, je Absender) und Verfall,
+	// wenn sie sich nie verbinden oder länger offline sind.
+	maxUnclaimed      = 100
+	maxUnclaimedPerIP = 10
+	unclaimedTTL      = 24 * time.Hour
+	neverSeenTTL      = 10 * time.Minute
+	minAccessPW       = 6
+	maxTries          = 5
+	sessionTTL        = 12 * time.Hour
+	minPassword       = 8
 )
 
 func OpenStore(path string) (*Store, error) {
@@ -207,20 +215,21 @@ func (s *Store) DeleteUser(name string) error {
 	return s.saveLocked()
 }
 
-func (s *Store) userHash(name string) string {
+// userKey bindet Sitzungen an Passwort und zweiten Faktor.
+func (s *Store) userKey(name string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if u := s.Users[NormalizeName(name)]; u != nil {
-		return u.Hash
+		return u.Hash + "|" + u.TOTP
 	}
 	return ""
 }
 
 // Sitzungs-Token: base64(user|ablauf).hmac – die Signatur hängt am Passwort-Hash,
-// eine Passwortänderung beendet damit alle bestehenden Anmeldungen.
+// eine Änderung von Passwort oder Einmalcode beendet alle bestehenden Anmeldungen.
 func (s *Store) MakeToken(user string) string {
 	p := base64.RawURLEncoding.EncodeToString([]byte(user + "|" + strconv.FormatInt(time.Now().Add(sessionTTL).Unix(), 10)))
-	return p + "." + s.sign(p+"|"+s.userHash(user))
+	return p + "." + s.sign(p+"|"+s.userKey(user))
 }
 
 func (s *Store) sign(p string) string {
@@ -243,7 +252,7 @@ func (s *Store) VerifyToken(tok string) (string, bool) {
 	if len(parts) != 2 {
 		return "", false
 	}
-	hash := s.userHash(parts[0])
+	hash := s.userKey(parts[0])
 	if hash == "" || subtle.ConstantTimeCompare([]byte(sig), []byte(s.sign(p+"|"+hash))) != 1 {
 		return "", false
 	}
@@ -257,7 +266,7 @@ func (s *Store) VerifyToken(tok string) (string, bool) {
 // NewPending legt ein noch nicht freigegebenes Gerät an. Rückgabe: ID, Geheimnis, Code.
 // Ohne owner ist das Gerät "verfügbar": jeder angemeldete Benutzer sieht es und kann es mit
 // Code und Zugriffspasswort übernehmen. Mit owner (ältere Agents) gehört es von Anfang an diesem Benutzer.
-func (s *Store) NewPending(owner, name, osName, password string) (id, secret, code string, err error) {
+func (s *Store) NewPending(owner, name, osName, password, ip string) (id, secret, code string, err error) {
 	owner = NormalizeName(owner)
 	var passHash string
 	if password != "" || owner == "" {
@@ -275,21 +284,24 @@ func (s *Store) NewPending(owner, name, osName, password string) (id, secret, co
 	if owner != "" && s.Users[owner] == nil {
 		return "", "", "", errors.New("Benutzer nicht gefunden")
 	}
-	pend, limit := 0, maxPending
+	pend, fromIP, limit := 0, 0, maxPending
 	if owner == "" {
 		limit = maxUnclaimed
 	}
 	for _, d := range s.Devices {
 		if d.Owner == owner && !d.Approved {
 			pend++
+			if d.IP == ip {
+				fromIP++
+			}
 		}
 	}
-	if pend >= limit {
+	if pend >= limit || (owner == "" && fromIP >= maxUnclaimedPerIP) {
 		return "", "", "", errors.New("Zu viele offene Anfragen")
 	}
 	id, secret, code = randHex(8), randHex(32), randCode()
 	s.Devices[id] = &Device{
-		ID: id, Owner: owner, Name: clip(name, 64), OS: clip(osName, 16), PassHash: passHash,
+		ID: id, Owner: owner, Name: clip(name, 64), OS: clip(osName, 16), PassHash: passHash, IP: ip,
 		SecretHash: hashSecret(secret), Code: code, Created: time.Now(), LastSeen: time.Now(),
 	}
 	return id, secret, code, s.saveLocked()
@@ -318,7 +330,7 @@ func (s *Store) Touch(id, name, osName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if d := s.Devices[id]; d != nil {
-		d.LastSeen = time.Now()
+		d.LastSeen, d.Seen = time.Now(), true
 		if name != "" {
 			d.Name = clip(name, 64)
 		}
@@ -369,7 +381,7 @@ func (s *Store) Approve(user, id, code, password string) error {
 		}
 		return wrong
 	}
-	d.Owner, d.Approved, d.Code, d.PassHash, d.Tries = user, true, "", "", 0
+	d.Owner, d.Approved, d.Code, d.PassHash, d.Tries, d.IP = user, true, "", "", 0, ""
 	return s.saveLocked()
 }
 
@@ -426,7 +438,11 @@ func (s *Store) ExpirePending(online func(id string) bool) []string {
 		}
 		expired := time.Since(d.Created) > pendingTTL
 		if d.Owner == "" {
-			expired = !online(id) && time.Since(d.LastSeen) > unclaimedTTL
+			ttl := unclaimedTTL
+			if !d.Seen {
+				ttl = neverSeenTTL
+			}
+			expired = !online(id) && time.Since(d.LastSeen) > ttl
 		}
 		if expired {
 			delete(s.Devices, id)

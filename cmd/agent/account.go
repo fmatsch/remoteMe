@@ -22,7 +22,6 @@ type account struct {
 	mu     sync.Mutex
 	server string
 	user   string
-	pw     string // nur im Speicher; dauerhaft liegt es im Schlüsselbund (macOS)
 	client *http.Client
 	ok     bool
 }
@@ -53,15 +52,21 @@ func normServer(s string) string {
 	return s
 }
 
-// login meldet am Server an und merkt sich Sitzung und Zugangsdaten für automatische Neuanmeldung.
-func (c *account) login(server, user, pw string) error {
+var errSessionExpired = errors.New("Sitzung abgelaufen – bitte neu anmelden")
+
+// login meldet am Server an; code ist der Einmalcode der Authenticator-App (falls eingerichtet).
+// Es gibt bewusst keine stille Neuanmeldung: der zweite Faktor wird jedes Mal verlangt.
+func (c *account) login(server, user, pw, code string) error {
 	server = normServer(server)
 	if server == "" || strings.TrimSpace(user) == "" || pw == "" {
 		return errors.New("Bitte Server, Benutzer und Passwort eingeben")
 	}
+	if err := checkServerURL(server); err != nil {
+		return err
+	}
 	jar, _ := cookiejar.New(nil)
 	cl := &http.Client{Timeout: 20 * time.Second, Jar: jar}
-	body, _ := json.Marshal(map[string]string{"username": strings.TrimSpace(user), "password": pw})
+	body, _ := json.Marshal(map[string]string{"username": strings.TrimSpace(user), "password": pw, "code": strings.TrimSpace(code)})
 	req, _ := http.NewRequest("POST", server+"/api/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-FW", "1")
@@ -79,7 +84,7 @@ func (c *account) login(server, user, pw string) error {
 		return errors.New(e.Error)
 	}
 	c.mu.Lock()
-	c.server, c.user, c.pw, c.client, c.ok = server, strings.ToLower(strings.TrimSpace(user)), pw, cl, true
+	c.server, c.user, c.client, c.ok = server, strings.ToLower(strings.TrimSpace(user)), cl, true
 	c.mu.Unlock()
 	b, _ := json.Marshal(accountFile{Server: server, User: c.user})
 	os.WriteFile(accountPath(), b, 0o600)
@@ -88,7 +93,7 @@ func (c *account) login(server, user, pw string) error {
 
 func (c *account) logout() {
 	c.mu.Lock()
-	c.pw, c.ok, c.client = "", false, nil
+	c.ok, c.client = false, nil
 	c.mu.Unlock()
 }
 
@@ -98,48 +103,44 @@ func (c *account) state() (server, user string, ok bool) {
 	return c.server, c.user, c.ok
 }
 
-// api ruft den Server auf; bei abgelaufener Sitzung (401) wird einmal neu angemeldet.
+// api ruft den Server auf; ist die Sitzung abgelaufen, wird abgemeldet.
 func (c *account) api(method, path string, in, out any) error {
-	for attempt := 0; ; attempt++ {
-		c.mu.Lock()
-		cl, server, user, pw := c.client, c.server, c.user, c.pw
-		c.mu.Unlock()
-		if cl == nil {
-			return errors.New("nicht angemeldet")
-		}
-		var rd io.Reader
-		if in != nil {
-			b, _ := json.Marshal(in)
-			rd = bytes.NewReader(b)
-		}
-		req, _ := http.NewRequest(method, server+path, rd)
-		req.Header.Set("X-FW", "1")
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := cl.Do(req)
-		if err != nil {
-			return err
-		}
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-		resp.Body.Close()
-		if resp.StatusCode == 401 && attempt == 0 {
-			if err := c.login(server, user, pw); err != nil {
-				return err
-			}
-			continue
-		}
-		if resp.StatusCode >= 300 {
-			var e struct{ Error string }
-			json.Unmarshal(data, &e)
-			if e.Error == "" {
-				e.Error = resp.Status
-			}
-			return errors.New(e.Error)
-		}
-		if out != nil {
-			return json.Unmarshal(data, out)
-		}
-		return nil
+	c.mu.Lock()
+	cl, server := c.client, c.server
+	c.mu.Unlock()
+	if cl == nil {
+		return errSessionExpired
 	}
+	var rd io.Reader
+	if in != nil {
+		b, _ := json.Marshal(in)
+		rd = bytes.NewReader(b)
+	}
+	req, _ := http.NewRequest(method, server+path, rd)
+	req.Header.Set("X-FW", "1")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cl.Do(req)
+	if err != nil {
+		return err
+	}
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	resp.Body.Close()
+	if resp.StatusCode == 401 {
+		c.logout()
+		return errSessionExpired
+	}
+	if resp.StatusCode >= 300 {
+		var e struct{ Error string }
+		json.Unmarshal(data, &e)
+		if e.Error == "" {
+			e.Error = resp.Status
+		}
+		return errors.New(e.Error)
+	}
+	if out != nil {
+		return json.Unmarshal(data, out)
+	}
+	return nil
 }
 
 type remoteDevice struct {

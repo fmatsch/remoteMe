@@ -22,6 +22,9 @@ const (
 
 	frameUpload   = 0x04 // Relay -> Agent: [0x04][req u32][daten]
 	frameDownload = 0x03 // Agent -> Relay: [0x03][req u32][daten]
+
+	maxAgentMessage   = 16 << 20 // freigegebenes Gerät (Bilder, Verzeichnislisten, Zwischenablage)
+	maxPendingMessage = 64 << 10
 )
 
 var upgrader = websocket.Upgrader{
@@ -187,17 +190,30 @@ func (s *Server) hAgentWS(w http.ResponseWriter, r *http.Request) {
 	ac.sendJSON(map[string]any{"t": "welcome", "approved": dev.Approved, "owner": dev.Owner})
 
 	for {
-		mt, data, err := ws.ReadMessage()
+		mt, rd, err := ws.NextReader()
 		if err != nil {
 			break
 		}
-		ws.SetReadDeadline(time.Now().Add(pongWait))
 		if !dev.Approved {
 			// Während der Freigabe prüfen, ob sie inzwischen erfolgt ist.
 			if d, ok := s.st.Device(id); ok {
 				dev.Approved = d.Approved
 			}
 		}
+		// Größe begrenzen: nicht freigegebene Geräte haben nichts Großes zu melden.
+		limit := int64(maxPendingMessage)
+		if dev.Approved {
+			limit = maxAgentMessage
+		}
+		data, err := io.ReadAll(io.LimitReader(rd, limit+1))
+		if err != nil {
+			break
+		}
+		if int64(len(data)) > limit {
+			log.Printf("Agent %s: Nachricht zu groß, Verbindung getrennt", id)
+			break
+		}
+		ws.SetReadDeadline(time.Now().Add(pongWait))
 		switch mt {
 		case websocket.BinaryMessage:
 			if len(data) >= 5 && data[0] == frameDownload {
@@ -271,7 +287,7 @@ func (s *Server) hViewWS(w http.ResponseWriter, r *http.Request, user string) {
 		old.ws.Close()
 	}
 	ac.sendJSON(map[string]any{"t": "viewer", "on": true})
-	log.Printf("Viewer %s verbunden mit %s", user, dev.Name)
+	log.Printf("Viewer %s verbunden mit %s von %s", user, dev.Name, clientIP(r))
 
 	done := make(chan struct{})
 	v.keepalive(done)

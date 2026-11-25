@@ -20,7 +20,7 @@ func main() {
 	key := flag.String("key", "", "TLS-Schlüssel")
 	open := flag.Bool("open-registration", false, "Registrierung für jeden erlauben (sonst nur der erste Benutzer bzw. per 'adduser')")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Aufruf:\n  server [Optionen]\n  server [Optionen] adduser <name> <passwort>\n  server [Optionen] setuser <name>   (Passwort von der Standardeingabe; anlegen oder ändern)\n  server [Optionen] deluser <name>\n\nVorher den laufenden Server stoppen.\n\nOptionen:\n")
+		fmt.Fprintf(os.Stderr, "Aufruf:\n  server [Optionen]\n  server [Optionen] adduser <name> <passwort>\n  server [Optionen] setuser <name>   (Passwort von der Standardeingabe; anlegen oder ändern)\n  server [Optionen] deluser <name>\n  server [Optionen] totp-new <name>  (neues Geheimnis anzeigen, ändert nichts)\n  server [Optionen] totp-set <name>  (Standardeingabe: Geheimnis, dann Einmalcode)\n  server [Optionen] totp-off <name>\n\nVorher den laufenden Server stoppen.\n\nOptionen:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -69,6 +69,40 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println("Benutzer gelöscht:", server.NormalizeName(flag.Arg(1)))
+		return
+	case "totp-new", "totp-set", "totp-off":
+		if flag.NArg() != 2 {
+			flag.Usage()
+			os.Exit(2)
+		}
+		name := server.NormalizeName(flag.Arg(1))
+		if !srv.Store().HasUser(name) {
+			log.Fatal("Benutzer nicht gefunden")
+		}
+		switch flag.Arg(0) {
+		case "totp-new":
+			secret := server.NewTOTPSecret()
+			fmt.Println(secret)
+			fmt.Println(server.TOTPURI(name, secret))
+		case "totp-set":
+			in := bufio.NewScanner(os.Stdin)
+			var lines []string
+			for len(lines) < 2 && in.Scan() {
+				lines = append(lines, strings.TrimSpace(in.Text()))
+			}
+			if len(lines) != 2 || lines[0] == "" {
+				log.Fatal("erwartet: Geheimnis und Einmalcode auf der Standardeingabe")
+			}
+			if err := srv.Store().SetTOTP(name, lines[0], lines[1]); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println("Einmalcode eingerichtet für:", name)
+		case "totp-off":
+			if err := srv.Store().SetTOTP(name, "", ""); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println("Einmalcode abgeschaltet für:", name)
+		}
 		return
 	case "":
 	default:

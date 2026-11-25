@@ -46,7 +46,7 @@ func main() {
 					}
 				}
 			}
-			openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", uiPort))
+			openBrowser(uiURL())
 		}
 		return
 	}
@@ -63,7 +63,7 @@ func main() {
 	showSetup := !*background || a.config() == nil
 	if showSetup && !nativeUI {
 		time.Sleep(300 * time.Millisecond)
-		openBrowser(fmt.Sprintf("http://127.0.0.1:%d/", uiPort))
+		openBrowser(uiURL())
 	}
 	runApp(ctx, stop, a, showSetup)
 }

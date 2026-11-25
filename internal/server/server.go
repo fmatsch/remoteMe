@@ -88,6 +88,7 @@ func secure(h http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		if strings.HasPrefix(r.URL.Path, "/api/") && r.Method != http.MethodGet {
 			// einfacher CSRF-Schutz zusätzlich zu SameSite=Strict
 			if r.Header.Get("X-FW") == "" && r.URL.Path != "/api/agent/pair" {
@@ -147,13 +148,18 @@ func jerr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
+// clientIP wertet X-Forwarded-For nur aus, wenn die Anfrage von einem Reverse-Proxy auf demselben
+// Rechner kommt, und nimmt dann den von ihm angehängten (letzten) Eintrag.
 func clientIP(r *http.Request) string {
-	if f := r.Header.Get("X-Forwarded-For"); f != "" {
-		return strings.TrimSpace(strings.Split(f, ",")[0])
-	}
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		h = r.RemoteAddr
+	}
+	if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+		if f := r.Header.Get("X-Forwarded-For"); f != "" {
+			parts := strings.Split(f, ",")
+			return strings.TrimSpace(parts[len(parts)-1])
+		}
 	}
 	return h
 }
@@ -176,6 +182,7 @@ func sameOrigin(r *http.Request) bool {
 type cred struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Code     string `json:"code"` // Einmalcode aus der Authenticator-App
 }
 
 func (s *Server) setSession(w http.ResponseWriter, r *http.Request, user string) {
@@ -213,18 +220,38 @@ func (s *Server) hLogin(w http.ResponseWriter, r *http.Request) {
 		jerr(w, 400, "Ungültige Anfrage")
 		return
 	}
-	key := "login:" + NormalizeName(c.Username) + "@" + clientIP(r)
-	if !s.lim.allow(key, 5, 10*time.Minute) {
+	ip, user := clientIP(r), NormalizeName(c.Username)
+	if len(user) > 32 {
+		user = user[:32]
+	}
+	// Begrenzung je Absender, je Benutzer und Absender sowie je Benutzer über alle Absender.
+	key := "login:" + user + "@" + ip
+	if !s.lim.allow("login-ip:"+ip, 30, 10*time.Minute) || !s.lim.allow(key, 6, 10*time.Minute) ||
+		(s.st.HasUser(user) && !s.lim.allow("login-user:"+user, 100, time.Hour)) {
+		log.Printf("Anmeldung gesperrt (zu viele Versuche): %q von %s", user, ip)
 		jerr(w, 429, "Zu viele Fehlversuche, bitte später erneut versuchen")
 		return
 	}
 	if !s.st.CheckUser(c.Username, c.Password) {
+		log.Printf("Anmeldung fehlgeschlagen (Passwort): %q von %s", user, ip)
 		jerr(w, 401, "Benutzername oder Passwort falsch")
 		return
 	}
+	if s.st.HasTOTP(user) {
+		if strings.TrimSpace(c.Code) == "" {
+			writeJSON(w, 401, map[string]any{"error": "Bitte den Einmalcode aus der Authenticator-App eingeben", "totp": true})
+			return
+		}
+		if !s.st.CheckTOTP(user, c.Code) {
+			log.Printf("Anmeldung fehlgeschlagen (Einmalcode): %q von %s", user, ip)
+			writeJSON(w, 401, map[string]any{"error": "Einmalcode stimmt nicht oder wurde schon benutzt", "totp": true})
+			return
+		}
+	}
 	s.lim.reset(key)
-	s.setSession(w, r, NormalizeName(c.Username))
-	writeJSON(w, 200, map[string]string{"user": NormalizeName(c.Username)})
+	log.Printf("Anmeldung: %q von %s", user, ip)
+	s.setSession(w, r, user)
+	writeJSON(w, 200, map[string]string{"user": user})
 }
 
 func (s *Server) hLogout(w http.ResponseWriter, r *http.Request) {
@@ -280,9 +307,11 @@ func (s *Server) hApprove(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	if err := s.st.Approve(user, id, b.Code, b.Password); err != nil {
+		log.Printf("Übernahme fehlgeschlagen: Gerät %q, Benutzer %q von %s: %v", id, user, clientIP(r), err)
 		jerr(w, 400, err.Error())
 		return
 	}
+	log.Printf("Übernahme: Gerät %q durch %q von %s", id, user, clientIP(r))
 	s.lim.reset(key)
 	s.lim.reset(userKey)
 	if ac := s.agent(id); ac != nil {
@@ -297,6 +326,7 @@ func (s *Server) hDelete(w http.ResponseWriter, r *http.Request, user string) {
 		jerr(w, 404, "Gerät nicht gefunden")
 		return
 	}
+	log.Printf("Gerät %q entfernt durch %q von %s", id, user, clientIP(r))
 	if ac := s.agent(id); ac != nil {
 		ac.sendJSON(map[string]any{"t": "revoked"})
 		ac.close()
@@ -320,7 +350,7 @@ func (s *Server) hPair(w http.ResponseWriter, r *http.Request) {
 		jerr(w, 400, "Ungültige Anfrage")
 		return
 	}
-	id, secret, code, err := s.st.NewPending(b.Username, b.Name, b.OS, b.Password)
+	id, secret, code, err := s.st.NewPending(b.Username, b.Name, b.OS, b.Password, clientIP(r))
 	if err != nil {
 		jerr(w, 400, err.Error())
 		return

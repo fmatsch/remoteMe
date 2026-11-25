@@ -5,7 +5,7 @@
 
 // Von Go bereitgestellt (remote_darwin.go); Rückgabe-Strings mit free() freigeben.
 extern char *goRemoteInfo(void);
-extern char *goRemoteLogin(const char *server, const char *user, const char *pw);
+extern char *goRemoteLogin(const char *server, const char *user, const char *pw, const char *code);
 extern void goRemoteLogout(void);
 extern char *goRemoteDevices(void);
 extern char *goRemoteApprove(const char *id, const char *code, const char *password);
@@ -72,7 +72,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 @interface FWRemote : NSObject <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
 @property(strong) NSWindow *win;
 @property(strong) NSView *loginView, *listView;
-@property(strong) NSTextField *fServer, *fUser, *fPass, *loginErr, *whoLabel, *listErr;
+@property(strong) NSTextField *fServer, *fUser, *fPass, *fCode, *loginErr, *whoLabel, *listErr;
 @property(strong) NSButton *loginBtn, *connectBtn, *approveBtn, *removeBtn;
 @property(strong) NSTableView *table;
 @property(strong) NSArray<NSDictionary *> *devs;
@@ -83,7 +83,7 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 @implementation FWRemote
 
 #define RW 560
-#define RH 440
+#define RH 500
 
 - (void)build {
 	self.sessions = [NSMutableArray array];
@@ -115,6 +115,11 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	[a addSubview:lbl(@"Passwort", NSMakeRect(28, y, RW - 56, 16), 12, YES)];
 	self.fPass = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(28, y - 28, RW - 56, 24)];
 	[a addSubview:self.fPass];
+	y -= 62;
+	[a addSubview:lbl(@"Einmalcode aus der Authenticator-App", NSMakeRect(28, y, RW - 56, 16), 12, YES)];
+	self.fCode = [[NSTextField alloc] initWithFrame:NSMakeRect(28, y - 28, 140, 24)];
+	self.fCode.placeholderString = @"6 Ziffern";
+	[a addSubview:self.fCode];
 	self.loginErr = [NSTextField wrappingLabelWithString:@""];
 	self.loginErr.frame = NSMakeRect(28, 62, RW - 56, 34); self.loginErr.font = [NSFont systemFontOfSize:12]; self.loginErr.textColor = NSColor.systemRedColor;
 	[a addSubview:self.loginErr];
@@ -175,9 +180,9 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 	self.fServer.stringValue = server.length ? server : (info[@"defaultServer"] ?: @"");
 	self.fUser.stringValue = user;
 	self.loginView.hidden = NO; self.listView.hidden = YES;
-	// gespeichertes Passwort -> still anmelden
+	// Gespeichertes Passwort vorausfüllen; der Einmalcode wird jedes Mal neu eingegeben.
 	NSString *pw = (server.length && user.length) ? kcGet([NSString stringWithFormat:@"%@@%@", user, server]) : nil;
-	if (pw) { self.fPass.stringValue = pw; [self doLogin:nil]; }
+	if (pw) { self.fPass.stringValue = pw; [self.win makeFirstResponder:self.fCode]; }
 }
 
 - (void)showList:(NSDictionary *)info {
@@ -189,12 +194,17 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 - (void)doLogin:(id)s {
 	if (self.busy) return;
 	self.busy = YES; self.loginBtn.enabled = NO; self.loginBtn.title = @"Melde an …"; self.loginErr.stringValue = @"";
-	NSString *sv = self.fServer.stringValue, *us = self.fUser.stringValue, *pw = self.fPass.stringValue;
+	NSString *sv = self.fServer.stringValue, *us = self.fUser.stringValue, *pw = self.fPass.stringValue, *code = self.fCode.stringValue;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-		NSString *err = strOf(goRemoteLogin(sv.UTF8String, us.UTF8String, pw.UTF8String));
+		NSString *err = strOf(goRemoteLogin(sv.UTF8String, us.UTF8String, pw.UTF8String, code.UTF8String));
 		dispatch_async(dispatch_get_main_queue(), ^{
 			self.busy = NO; self.loginBtn.enabled = YES; self.loginBtn.title = @"Anmelden";
-			if (err) { self.loginErr.stringValue = err; return; }
+			self.fCode.stringValue = @"";
+			if (err) {
+				self.loginErr.stringValue = err;
+				if ([err containsString:@"Einmalcode"]) [self.win makeFirstResponder:self.fCode];
+				return;
+			}
 			NSDictionary *info = jsonOf(goRemoteInfo());
 			kcSet([NSString stringWithFormat:@"%@@%@", info[@"user"], info[@"server"]], pw);
 			self.fPass.stringValue = @"";
@@ -221,6 +231,11 @@ static NSTextField *lbl(NSString *t, NSRect f, CGFloat size, BOOL bold) {
 			self.polling = NO;
 			NSString *err = r[@"error"];
 			self.listErr.stringValue = err ?: @"";
+			if ([r[@"loggedOut"] boolValue]) { // Sitzung abgelaufen -> Anmeldung zeigen
+				[self show];
+				self.loginErr.stringValue = err ?: @"";
+				return;
+			}
 			if (err) return;
 			NSString *sel = [self selected][@"id"];
 			self.devs = r[@"devices"] ?: @[];

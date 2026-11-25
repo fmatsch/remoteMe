@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Installiert/aktualisiert den remoteMe-Relay-Server auf dem Ubuntu/Debian-Server hinter Caddy.
-#   deploy/deploy.sh                           -> erreichbar unter https://www.depes.ch/remote/
-#   PK_SITE=remote.depes.ch deploy/deploy.sh   -> eigene (Sub-)Domain (DNS-A-Eintrag nötig)
+#   deploy/deploy.sh                       -> https://remote.depes.ch (eigene Adresse, DNS-A-Eintrag nötig)
+#   PK_SITE=andere.domain deploy/deploy.sh
 # Voraussetzung: SSH-Schlüssel ist am Server hinterlegt, Caddy läuft mit /etc/caddy/Caddyfile.
 set -euo pipefail
 
 HOST="${PK_SERVER:-root@138.201.56.28}"
 KEY="${PK_KEY:-$HOME/.ssh/praxiskalender_ed25519}"
-SITE="${PK_SITE:-}"          # leer = Pfad /remote/ auf www.depes.ch
+SITE="${PK_SITE:-remote.depes.ch}" # eigene Adresse: kein gemeinsamer Ursprung mit anderen Anwendungen
 PORT="${RM_PORT:-4740}"
 cd "$(dirname "$0")/.."
 

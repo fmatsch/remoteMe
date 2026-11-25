@@ -37,6 +37,8 @@ Beim ersten Start fragt die Mac-App, ob der Computer **nur als Ziel** dienen ode
 
 ```bash
 deploy/user.sh                  # anlegen oder Passwort ändern (verdeckte Abfrage)
+deploy/user.sh --totp NAME      # Authenticator-App als zweiten Faktor einrichten (empfohlen)
+deploy/user.sh --totp-off NAME  # zweiten Faktor abschalten (z. B. Telefon verloren)
 deploy/user.sh --delete NAME    # Benutzer samt seinen Computern löschen
 ```
 

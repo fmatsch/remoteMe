@@ -35,8 +35,8 @@ func goRemoteInfo() *C.char {
 }
 
 //export goRemoteLogin
-func goRemoteLogin(server, user, pw *C.char) *C.char {
-	return cerr(acct.login(C.GoString(server), C.GoString(user), C.GoString(pw)))
+func goRemoteLogin(server, user, pw, code *C.char) *C.char {
+	return cerr(acct.login(C.GoString(server), C.GoString(user), C.GoString(pw), C.GoString(code)))
 }
 
 //export goRemoteLogout
@@ -46,7 +46,8 @@ func goRemoteLogout() { acct.logout() }
 func goRemoteDevices() *C.char {
 	l, err := acct.devices()
 	if err != nil {
-		return cjson(map[string]any{"error": err.Error()})
+		_, _, ok := acct.state()
+		return cjson(map[string]any{"error": err.Error(), "loggedOut": !ok})
 	}
 	if l == nil {
 		l = []remoteDevice{}

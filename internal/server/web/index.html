@@ -81,6 +81,7 @@ h2{font-size:16px;margin:0}
     <div id="authSub" style="color:var(--mut);margin-bottom:6px">Bitte anmelden</div>
     <label for="u">Benutzername</label><input type="text" id="u" autocomplete="username">
     <label for="p">Passwort</label><input type="password" id="p" autocomplete="current-password">
+    <label for="otp">Einmalcode (Authenticator-App, falls eingerichtet)</label><input type="text" id="otp" inputmode="numeric" maxlength="7" autocomplete="one-time-code">
     <div class="err" id="authErr"></div>
     <button class="pri" id="authGo">Anmelden</button>
     <p style="text-align:center;margin:14px 0 0"><a href="#" id="authSwitch" style="color:var(--acc)">Neuen Benutzer anlegen</a></p>
@@ -146,7 +147,8 @@ function toast(msg) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hide'), 3500);
 }
 function show(view) { for (const v of ['auth', 'home', 'session']) $(v).classList.toggle('hide', v !== view); }
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const num = v => { const n = Math.trunc(Number(v)); return Number.isFinite(n) && n > 0 ? Math.min(n, Number.MAX_SAFE_INTEGER) : 0; }; // Zahlen vom Zielrechner
 const osName = {windows: 'Windows', linux: 'Linux', darwin: 'macOS'};
 
 /* ---------- Anmeldung ---------- */
@@ -162,12 +164,12 @@ $('authSwitch').onclick = e => { e.preventDefault(); setAuthMode(!registering); 
 async function doAuth() {
   $('authErr').textContent = '';
   try {
-    const r = await api(registering ? '/api/register' : '/api/login', 'POST', {username: $('u').value, password: $('p').value});
-    me = r.user; $('p').value = ''; enterHome();
-  } catch (e) { $('authErr').textContent = e.message; }
+    const r = await api(registering ? '/api/register' : '/api/login', 'POST', {username: $('u').value, password: $('p').value, code: $('otp').value});
+    me = r.user; $('p').value = $('otp').value = ''; enterHome();
+  } catch (e) { $('authErr').textContent = e.message; $('otp').value = ''; if (/Einmalcode/.test(e.message)) $('otp').focus(); }
 }
 $('authGo').onclick = doAuth;
-$('p').onkeydown = e => { if (e.key === 'Enter') doAuth(); };
+$('p').onkeydown = $('otp').onkeydown = e => { if (e.key === 'Enter') doAuth(); };
 $('u').onkeydown = e => { if (e.key === 'Enter') $('p').focus(); };
 $('logout').onclick = async () => { await api('/api/logout', 'POST').catch(() => {}); stopPoll(); show('auth'); };
 
@@ -195,7 +197,7 @@ async function loadDevices() {
     return `
     <div class="card dev" data-id="${d.id}">
       <div class="name"><span class="dot ${!d.approved ? 'pend' : d.online ? 'on' : ''}"></span>${esc(d.name || 'Unbenannt')}</div>
-      <div class="meta">${osName[d.os] || esc(d.os)} · ${state}</div>
+      <div class="meta">${Object.hasOwn(osName, d.os) ? osName[d.os] : esc(d.os)} · ${state}</div>
       ${actions}
     </div>`;
   }).join('');
@@ -254,15 +256,16 @@ $('ovlBtn').onclick = connect;
 function onCtrl(m) {
   switch (m.t) {
     case 'screen':
-      cw = m.w; ch = m.h; canvas.width = m.vw || m.w; canvas.height = m.vh || m.h;
+      cw = Math.min(num(m.w), 16384); ch = Math.min(num(m.h), 16384);
+      canvas.width = Math.min(num(m.vw), 16384) || cw; canvas.height = Math.min(num(m.vh), 16384) || ch;
       cx.fillStyle = '#000'; cx.fillRect(0, 0, canvas.width, canvas.height);
       closeDecoder(); epoch = m.e || 0; recv = 0; codecName = m.codec || 'jpeg'; vwait = true; queue = [];
       applyFit();
       const sel = $('sDisp');
-      if (m.displays.length > 1) {
+      if (Array.isArray(m.displays) && m.displays.length > 1) {
         sel.classList.remove('hide');
-        sel.innerHTML = m.displays.map((d, i) => `<option value="${i}">Bildschirm ${i + 1} (${d.w}×${d.h})</option>`).join('');
-        sel.value = m.i;
+        sel.innerHTML = m.displays.map((d, i) => `<option value="${i}">Bildschirm ${i + 1} (${num(d && d.w)}×${num(d && d.h)})</option>`).join('');
+        sel.value = num(m.i);
       } else sel.classList.add('hide');
       break;
     case 'codec': // Agent kann kein H.264 und liefert JPEG
@@ -411,7 +414,7 @@ function renderDir(m) {
   $('flist').innerHTML = (m.entries || []).map((en, i) => `
     <div class="f" draggable="true" data-i="${i}">
       <span>${en.d ? '📁' : '📄'}</span><span class="n" title="${esc(en.n)}">${esc(en.n)}</span>
-      <span class="s">${en.d ? '' : fmtSize(en.s)}</span><button class="dl" title="${en.d ? 'Als ZIP herunterladen' : 'Herunterladen'}">⬇</button>
+      <span class="s">${en.d ? '' : fmtSize(num(en.s))}</span><button class="dl" title="${en.d ? 'Als ZIP herunterladen' : 'Herunterladen'}">⬇</button>
     </div>`).join('');
   $('flist')._entries = m.entries || [];
 }

@@ -3,13 +3,16 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -24,12 +27,25 @@ type ui struct {
 func newUI(a *Agent, ln net.Listener) *ui {
 	b := make([]byte, 16)
 	rand.Read(b)
-	return &ui{a: a, token: hex.EncodeToString(b), port: ln.Addr().(*net.TCPAddr).Port}
+	u := &ui{a: a, token: hex.EncodeToString(b), port: ln.Addr().(*net.TCPAddr).Port}
+	if !nativeUI {
+		// Nur der angemeldete Benutzer kann den Schlüssel lesen und damit die Seite öffnen.
+		os.Remove(uiTokenPath())
+		os.WriteFile(uiTokenPath(), []byte(u.token), 0o600)
+	}
+	return u
+}
+
+func uiTokenPath() string { return filepath.Join(configDir(), "ui.token") }
+
+// uiURL ist die Adresse der lokalen Einrichtungsseite samt Schlüssel der laufenden Instanz.
+func uiURL() string {
+	k, _ := os.ReadFile(uiTokenPath())
+	return fmt.Sprintf("http://127.0.0.1:%d/?k=%s", uiPort, strings.TrimSpace(string(k)))
 }
 
 func (u *ui) serve(ln net.Listener) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", u.page)
 	// Zweiter Programmstart: laufende Instanz zeigt ihr Fenster (ohne Token, bewirkt nur das).
 	mux.HandleFunc("POST /show", func(w http.ResponseWriter, r *http.Request) {
 		if !nativeUI || !u.hostOK(r) || r.Header.Get("Origin") != "" {
@@ -39,6 +55,12 @@ func (u *ui) serve(ln net.Listener) {
 		showWindow()
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// Die Einrichtungsseite gibt es nur ohne natives Fenster (Windows, Linux).
+	if nativeUI {
+		http.Serve(ln, mux)
+		return
+	}
+	mux.HandleFunc("GET /{$}", u.page)
 	mux.HandleFunc("GET /state", u.guard(u.state))
 	mux.HandleFunc("POST /pair", u.guard(u.pair))
 	mux.HandleFunc("POST /unpair", u.guard(u.unpair))
@@ -62,7 +84,9 @@ func (u *ui) hostOK(r *http.Request) bool {
 }
 
 func (u *ui) page(w http.ResponseWriter, r *http.Request) {
-	if !u.hostOK(r) {
+	// Ohne den Schlüssel in der Adresse keine Seite: andere Benutzer desselben Rechners sollen
+	// den Computer nicht neu koppeln können.
+	if !u.hostOK(r) || subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("k")), []byte(u.token)) != 1 {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -125,6 +149,9 @@ func (a *Agent) pairDevice(server, name, password string, autostart bool) error 
 	}
 	if !strings.Contains(server, "://") {
 		server = "https://" + server
+	}
+	if err := checkServerURL(server); err != nil {
+		return err
 	}
 	if len(password) < minAccessPassword {
 		return fmt.Errorf("Das Zugriffspasswort muss mindestens %d Zeichen haben", minAccessPassword)
@@ -238,3 +265,16 @@ $('un').onclick=async()=>{if(confirm('Kopplung wirklich lösen? Danach ist kein 
 $('auto2').onchange=()=>api('/autostart','POST',{on:$('auto2').checked}).catch(e=>alert(e.message));
 refresh();setInterval(refresh,2000);
 </script></body></html>`
+
+// checkServerURL verlangt https; unverschlüsseltes http nur für Tests auf demselben Rechner.
+func checkServerURL(server string) error {
+	u, err := url.Parse(server)
+	if err != nil || u.Host == "" {
+		return errors.New("Ungültige Server-Adresse")
+	}
+	h := u.Hostname()
+	if u.Scheme == "https" || (u.Scheme == "http" && (h == "localhost" || h == "127.0.0.1" || h == "::1")) {
+		return nil
+	}
+	return errors.New("Die Server-Adresse muss mit https:// beginnen")
+}
